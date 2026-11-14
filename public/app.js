@@ -1,5 +1,5 @@
 import {sources,materialChoices,families} from './material-data.js';
-import {fresh,allPlaces,active,validate,formatDate,storagePlaces,unopenedId,unopenedPlace} from './model.js';
+import {fresh,allPlaces,active,validate,formatDate,storagePlaces,reorderStoragePlace,dryingAge,unopenedId,unopenedPlace} from './model.js';
 import {guideUrl,amsUrl,materialGuide,dryingReminder,moistureSensitive,storageHumidity} from './guide.js';
 const $=s=>document.querySelector(s);
 const h=(s='')=>String(s??'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]));
@@ -27,6 +27,12 @@ const reel=(s)=>'<div aria-hidden="true" class="reel '+(s?'':'empty')+'"'+(s?' s
 const grams=n=>n>=1000?(n/1000).toFixed(2).replace(/\.?0+$/,'')+' kg':n+' g';
 const pct=s=>Math.round(s.remaining/s.weight*100);
 const date=x=>x?new Date(x).toLocaleString('zh-CN',{hour12:false}):'尚未记录';
+function dryAge(s,withDate=false){
+ const age=dryingAge(s.lastDry);
+ if(!age)return '<span class="dry-age">尚未烘干</span>';
+ const elapsed='<strong class="dry-age dry-age--'+age.tone+'">'+(age.days===0?'不到 1 天':age.days+' 天前')+'</strong>';
+ return withDate?'<time datetime="'+h(s.lastDry)+'">'+h(date(s.lastDry))+'</time> <span aria-hidden="true">·</span> '+elapsed:elapsed;
+}
 const localTime=()=>{const t=new Date();return formatDate()+'T'+[t.getHours(),t.getMinutes()].map(x=>String(x).padStart(2,'0')).join(':');};
 let db, account=null, state, timer, camera, query='', material='', stockStatus='', selectedPlace='', message='', conflict, busy=false, install, backupData;
 let toastTimer;
@@ -56,7 +62,7 @@ async function save(change,ok='已保存'){
 function sheet(title,body){stopCamera();if(!panel.open)panel.showModal();panel.innerHTML=sec(title,btn('关闭','close'))+body;}
 function form(title,kind,body,key='',label='保存'){sheet(title,'<form class="forms" data-kind="'+kind+'" data-key="'+h(key)+'">'+body+'<p class="wide alert" role="alert" id="form-error"></p><div class="wide actions">'+btn('取消','close')+'<button class="primary">'+label+'</button></div></form>');}
 function card(s){
- return '<article class="card spool stack"><div class="row">'+reel(s)+'<div><h3>'+h(name(s))+'</h3><small>'+h(s.brand)+' · '+h(s.colorName||s.color)+'</small></div><small>'+h(s.status)+'</small></div><small>'+h(placeName(s.location))+'</small><div class="track" role="progressbar" aria-label="余量" aria-valuenow="'+pct(s)+'"><i style="width:'+pct(s)+'%"></i></div><div class="row"><strong>'+grams(s.remaining)+'</strong><small>'+h(s.confidence||'估算')+' · '+pct(s)+'%</small></div>'+actions(btn('详情','detail',s.id),btn('调余量','amount',s.id))+'</article>';
+ return '<article class="card spool stack"><div class="row">'+reel(s)+'<div><h3>'+h(name(s))+'</h3><small>'+h(s.brand)+' · '+h(s.colorName||s.color)+'</small></div><small>'+h(s.status)+'</small></div><small>'+h(placeName(s.location))+'</small><p class="dry-summary muted">上次烘干 '+dryAge(s)+'</p><div class="track" role="progressbar" aria-label="余量" aria-valuenow="'+pct(s)+'"><i style="width:'+pct(s)+'%"></i></div><div class="row"><strong>'+grams(s.remaining)+'</strong><small>'+h(s.confidence||'估算')+' · '+pct(s)+'%</small></div>'+actions(btn('详情','detail',s.id),btn('调余量','amount',s.id))+'</article>';
 }
 const isAms2Pro=dev=>dev.slots===4&&/ams\s*2\s*pro/i.test(dev.name);
 const inAms=(s,dev)=>Array.from({length:dev.slots},(_,i)=>dev.id+'-'+(i+1)).includes(s.location);
@@ -82,11 +88,17 @@ function stock(){
 function places(){
  const places=storagePlaces(state.data);
  return head('位置','查看 AMS 槽位、外挂料架和储存区。',actions(btn('新增 AMS','device'),btn('新增位置','place','','primary')))+
- state.data.devices.map(ams).join('')+sec('存储位置')+grid(places.map(p=>{
+ state.data.devices.map(ams).join('')+sec('存储位置')+'<div class="stack storage-list">'+places.map((p,index)=>{
   const isUnopened=p.id===unopenedId,rh=storageHumidity(state.data,p.id);
-  return '<section class="card stack storage-card '+(isUnopened?'unopened':'')+'"><div class="place-icon">'+draw(isUnopened?'unopened':'storage')+'</div><h3>'+h(p.name)+'</h3><small>'+state.data.spools.filter(s=>s.location===p.id).length+' 卷 · '+(p.capacity?'容量 '+p.capacity+' 卷':'不限容量')+'</small>'+
-  (rh!==null?'<small>按 '+rh+'% RH 估算</small>':'')+actions(btn('查看卷盘','filter-place',p.id))+'</section>';
- }));
+  const order=(label,icon,action,disabled)=>'<button type="button" data-action="'+action+'" data-key="'+h(p.id)+'" aria-label="'+label+' '+h(p.name)+'" '+(disabled?'disabled':'')+'>'+icon+'</button>';
+  return '<section class="card storage-card storage-row '+(isUnopened?'unopened':'')+'"><div class="place-icon">'+draw(isUnopened?'unopened':'storage')+'</div><div class="storage-text"><h3>'+h(p.name)+'</h3><small>'+state.data.spools.filter(s=>s.location===p.id).length+' 卷 · '+(p.capacity?'容量 '+p.capacity+' 卷':'不限容量')+(rh!==null?' · 按 '+rh+'% RH 估算':'')+'</small></div>'+
+  '<div class="actions storage-controls">'+btn('查看卷盘','filter-place',p.id)+order('上移','↑','place-up',index===0)+order('下移','↓','place-down',index===places.length-1)+'</div></section>';
+ }).join('')+'</div>';
+}
+async function reorderPlace(key,offset){
+ await save(data=>reorderStoragePlace(data,key,offset),'已更新位置顺序');
+ const controls=Array.from(main.querySelectorAll('[data-action="place-up"],[data-action="place-down"]')).filter(button=>button.dataset.key===key&&!button.disabled);
+ (controls.find(button=>button.dataset.action===(offset<0?'place-up':'place-down'))||controls[0])?.focus();
 }
 function summary(){
  const s=activeRolls(),sum=s.reduce((a,b)=>a+b.remaining,0);
@@ -142,12 +154,21 @@ function edit(s,copy=false){
  select('位置','location',locations(!s||copy?unopenedId:x.location))+(s&&!copy?'':field('购买卷数','qty',1,'number','min="1" max="100" required'))+
  '<details class="wide"><summary>规格、采购与标签</summary><div class="forms">'+field('卷盘名称','name',x.name)+field('SKU','sku',x.sku)+field('批次','lot',x.lot)+field('开封日期','opened',copy?'':x.opened,'date','max="'+formatDate()+'"')+field('空盘重量（g）','tare',x.tare,'number','min="0"')+field('单卷价格（¥）','price',x.price,'number','min="0" step=".01"')+select('状态','status',opts(statusList.slice(0,5),copy?'未开封':x.status))+select('标签','rfid',opts(['未知','无标签','Bambu 官方 RFID','第三方 RFID/NFC','第三方二维码'],x.rfid))+field('标签名称 / UID','label',x.label)+field('备注','note',x.note)+select('受潮迹象','damp',optionsDamp(x.damp))+'</div></details>',s&&!copy?s.id:'','保存卷盘');
 }
+function detailMetadata(s){
+ const rows=[['卷盘名称',s.name],['SKU',s.sku],['批次',s.lot],['初始净重量',grams(s.weight)],
+  ['空盘重量',s.tare!=null&&s.tare!==''?s.tare+' g':''],['购买日期',s.bought],['开封日期',s.opened],
+  ['单卷价格',s.price!=null&&s.price!==''?'¥'+s.price:''],['标签类型',s.rfid==='未知'?'':s.rfid],
+  ['标签名称 / UID',s.label],['受潮迹象',s.damp?'已标记':'']].filter(([,value])=>String(value??'').trim());
+ if(!rows.length&&!s.note)return '';
+ return '<section class="detail-metadata stack"><h3>规格、采购与标签</h3><dl>'+rows.map(([label,value])=>'<div><dt>'+label+'</dt><dd>'+h(value)+'</dd></div>').join('')+'</dl>'+
+ (s.note?'<div class="detail-note"><small>备注</small><p>'+h(s.note)+'</p></div>':'')+'</section>';
+}
 function detail(s){
  const rows=state.data.events.filter(e=>e.spool===s.id).slice().reverse();
  const current=['已归档','已删除'].includes(s.status);
- sheet(h(name(s)),'<div class="stack"><div class="row">'+reel(s)+'<div><h3>'+h(s.brand)+' · '+h(s.material)+'</h3><p class="muted">'+h(s.colorName||s.color)+' · '+h(s.status)+'</p></div><strong>'+grams(s.remaining)+'</strong></div><p>'+h(placeName(s.location))+' · 购买 '+h(s.bought)+' · '+h(s.rfid)+'</p><p class="muted">上次烘干 '+h(date(s.lastDry))+' · 上次盘点 '+h(date(s.lastAudit))+'</p>'+
+ sheet(h(name(s)),'<div class="stack"><div class="row">'+reel(s)+'<div><h3>'+h(s.brand)+' · '+h(s.material)+'</h3><p class="muted">'+h(s.colorName||s.color)+' · '+h(s.status)+'</p></div><strong>'+grams(s.remaining)+'</strong></div><p>'+h(placeName(s.location))+'</p><p class="muted dry-summary">上次烘干 '+dryAge(s,true)+' · 上次盘点 '+h(date(s.lastAudit))+'</p>'+
  (current?actions(btn('恢复在库','recover',s.id,'primary')):actions(btn('调余量','amount',s.id,'primary'),btn('移动 / 交换','move',s.id),btn('记烘干','dry',s.id),btn('编辑','edit',s.id),btn('复制','duplicate',s.id),btn('归档','archive',s.id),btn('移到回收站','trash',s.id)))+
- '<a class="guide-link" href="#guide/'+encodeURIComponent(s.id)+'">材料指南与烘干参数 <span aria-hidden="true">↗</span></a>'+(alertFor(s)?'<p class="alert">'+h(alertFor(s))+'</p>':'')+(s.note?'<p>'+h(s.note)+'</p>':'')+'<details><summary>操作历史 · '+rows.length+'</summary>'+rows.slice(0,100).map(e=>'<div class="item"><strong>'+h(events[e.type]||e.type)+'</strong><p class="muted">'+h(date(e.at))+(typeof e.before==='number'?' · '+e.before+' g → '+e.after+' g':'')+(e.note?' · '+h(e.note):'')+'</p></div>').join('')+'</details></div>');
+ '<a class="guide-link" href="#guide/'+encodeURIComponent(s.id)+'">材料指南与烘干参数 <span aria-hidden="true">↗</span></a>'+(alertFor(s)?'<p class="alert">'+h(alertFor(s))+'</p>':'')+detailMetadata(s)+'<details><summary>操作历史 · '+rows.length+'</summary>'+rows.slice(0,100).map(e=>'<div class="item"><strong>'+h(events[e.type]||e.type)+'</strong><p class="muted">'+h(date(e.at))+(typeof e.before==='number'?' · '+e.before+' g → '+e.after+' g':'')+(e.note?' · '+h(e.note):'')+'</p></div>').join('')+'</details></div>');
 }
 const sourceLinks=keys=>actions(...[...new Set(keys)].map(k=>{
  const [label,url]=sources[k];
@@ -306,6 +327,8 @@ function pick(source,x=.5,y=.5){
 }
 function confirm(title,text,action,key){sheet(title,'<div class="stack"><p>'+text+'</p>'+actions(btn('取消','close'),btn('确认','confirm-'+action,key,'primary'))+'<p class="alert" id="form-error"></p></div>');}
 const acts={
+ 'place-up':key=>reorderPlace(key,-1),
+ 'place-down':key=>reorderPlace(key,1),
  'cancel-external':()=>restorePlacementForm(),
  'confirm-external':async()=>{
   const pending=placementWarning;
@@ -332,7 +355,7 @@ const acts={
   return save(d=>recordDry(d,spool(d,k),now(),device,[],true),'已记录完全烘干');
  },
  'dry-batch':k=>{const dev=state.data.devices.find(d=>d.id===k);if(dev&&isAms2Pro(dev))dryBatch(dev);},
- audit:()=>sheet('库存盘点',activeRolls().length?actions(btn('批量确认已盘点','audit-all'))+activeRolls().map(s=>'<div class="row item"><div><strong>'+h(name(s))+'</strong><p class="muted">'+h(placeName(s.location))+' · '+grams(s.remaining)+'</p></div>'+btn('盘点','audit-single',s.id)+'</div>').join(''):empty('没有待盘点卷盘')),
+ audit:()=>sheet('库存盘点',activeRolls().length?actions(btn('批量确认已盘点','audit-all'))+activeRolls().map(s=>'<div class="row item audit-roll"><div><strong>'+h(name(s))+'</strong><p class="muted">'+h(placeName(s.location))+' · '+grams(s.remaining)+'</p><p class="muted dry-summary">上次烘干 '+dryAge(s,true)+'</p></div>'+btn('盘点','audit-single',s.id)+'</div>').join(''):empty('没有待盘点卷盘')),
  'audit-all':()=>confirm('确认盘点','将所有在库卷盘标记为已核对。','audit-all'),
  'confirm-audit-all':()=>save(d=>{for(const s of d.spools.filter(active)){s.lastAudit=now();log(d,s,'audit',s.remaining,s.remaining);}},'已核对在库卷盘'),
  'audit-single':k=>form('核对 '+h(name(spool(state.data,k))),'audit',field('当前余量（g）','grams',spool(state.data,k).remaining,'number','min="0" required')+select('当前位置','location',locations(spool(state.data,k).location)),k,'确认盘点'),

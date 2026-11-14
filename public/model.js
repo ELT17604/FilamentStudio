@@ -1,6 +1,20 @@
 export const unopenedId='unopened-stock';
 export const unopenedPlace={id:unopenedId,name:'未开封储存区',capacity:0};
 export const storagePlaces=d=>d.places.some(p=>p.id===unopenedId)?d.places:[{...unopenedPlace},...d.places];
+export function reorderStoragePlace(data,id,offset){
+ const places=storagePlaces(data).slice();
+ const from=places.findIndex(place=>place.id===id);
+ const to=from+offset;
+ if(from<0||to<0||to>=places.length)return;
+ [places[from],places[to]]=[places[to],places[from]];
+ data.places=places;
+}
+export function dryingAge(timestamp,now=Date.now()){
+ const time=Date.parse(timestamp);
+ if(!Number.isFinite(time))return null;
+ const days=Math.max(0,Math.floor((now-time)/86400000));
+ return {days,tone:days<7?'recent':days<30?'aging':'old'};
+}
 export const fresh=()=>({schema:1,spools:[],events:[],devices:[{id:'ams-1',name:'AMS 2 Pro',slots:4}],places:[{id:'external',name:'X2D 外挂料架',capacity:1},{id:'vacuum',name:'真空存储',capacity:0}],settings:{dryDays:30,low:10}});
 export const allPlaces=d=>[...d.devices.flatMap(x=>Array.from({length:x.slots},(_,n)=>({id:x.id+'-'+(n+1),name:x.name+' / '+(n+1),capacity:1}))),...storagePlaces(d)];
 export const active=s=>!['已归档','已删除','已耗尽'].includes(s.status);
