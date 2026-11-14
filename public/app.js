@@ -1,11 +1,11 @@
+import {sources,materialChoices,families} from './material-data.js';
 import {fresh,allPlaces,active,validate,formatDate,storagePlaces,unopenedId,unopenedPlace} from './model.js';
 import {guideUrl,amsUrl,materialGuide,dryingReminder,moistureSensitive,storageHumidity} from './guide.js';
 const $=s=>document.querySelector(s);
 const h=(s='')=>String(s??'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]));
 const id=()=>crypto.randomUUID(),now=()=>new Date().toISOString();
 const main=$('#app'),panel=$('#panel');
-const families={PLA:['PLA-BASIC','PLA-MATTE','PLA-SILK','PLA-TOUGH','PLA-CF','PLA-GLOW','PLA-TRANSLUCENT','PLA-AERO'],PETG:['PETG-BASIC','PETG-HF','PETG-MATTE','PETG-CF','PETG-TRANSLUCENT'],ABS:['ABS','ABS-GF'],ASA:['ASA','ASA-CF'],TPU:['TPU','TPU 95A HF','TPU FOR AMS'],PA:['PA6','PA6-CF','PA6-GF','PAHT-CF'],PC:['PC','PC-CF'],PET:['PET','PET-CF'],PPA:['PPA-CF'],PPS:['PPS-CF'],其他:['PP','PVA','BVOH','HIPS','Support for PLA','Support for PLA/PETG','Support for ABS','Support for PA/PET']};
-const builtBrands=['Bambu Lab','eSUN','Polymaker','SUNLU','Overture','ELEGOO','Creality','Prusament'];
+const builtBrands=['Bambu Lab','eSUN','Polymaker','SUNLU','Overture','ELEGOO','Creality','Prusament','Forward AM','UltiMaker'];
 const labels={home:['home','首页'],stock:['inventory_2','库存'],places:['shelves','位置'],stats:['bar_chart','统计'],settings:['settings','设置']};
 const icons={home:'M3 10 12 3l9 7v11h-6v-7H9v7H3z',inventory_2:'M4 8h16v12H4z M3 4h18v4H3z M9 12h6',shelves:'M4 4h16v16H4z M4 12h16 M12 4v16',bar_chart:'M4 20h16 M6 16v-5 M12 16V6 M18 16v-8',settings:'M19 12a7 7 0 1 1-14 0 7 7 0 1 1 14 0z M12 2v3 M12 19v3 M2 12h3 M19 12h3 M5 5l2 2 M17 17l2 2 M5 19l2-2 M17 7l2-2',unopened:'M4 7l8-4 8 4v10l-8 4-8-4z M4 7l8 4 8-4 M12 11v10 M8 5l8 4',storage:'M4 5h16v14H4z M4 10h16 M10 14h4'};
 const draw=k=>'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+icons[k]+'"/></svg>';
@@ -115,7 +115,7 @@ const optionsDamp=value=>option('no','未标记',value?'yes':'no')+option('yes',
 function edit(s,copy=false){
  const x=s||{family:'PETG',material:'PETG-MATTE',brand:'Bambu Lab',weight:1000,color:'#85bba6',bought:formatDate(),status:'未开封',rfid:'未知'};
  const brands=[...new Set([...builtBrands,...state.data.spools.map(s=>s.brand)])];
- const dict=[...new Set([...(families[x.family]||[]),...state.data.spools.filter(s=>s.family===x.family).map(s=>s.material)])];
+ const dict=[...new Set([...(families[x.family]||[]),...materialChoices(x.family),...state.data.spools.filter(s=>s.family===x.family).map(s=>s.material)])];
  form(s&&!copy?'编辑耗材':'新增耗材','spool',
  field('品牌','brand',x.brand,'text','required list="brands"')+'<datalist id="brands">'+opts(brands)+'</datalist>'+
  select('材料大类','family',opts(Object.keys(families),x.family))+field('材料系列','material',x.material,'text','required list="materials"')+'<datalist id="materials">'+opts(dict)+'</datalist>'+
@@ -132,26 +132,32 @@ function detail(s){
  (current?actions(btn('恢复在库','recover',s.id,'primary')):actions(btn('调余量','amount',s.id,'primary'),btn('移动 / 交换','move',s.id),btn('记烘干','dry',s.id),btn('编辑','edit',s.id),btn('复制','duplicate',s.id),btn('归档','archive',s.id),btn('移到回收站','trash',s.id)))+
  '<a class="guide-link" href="#guide/'+encodeURIComponent(s.id)+'">材料指南与烘干参数 <span aria-hidden="true">↗</span></a>'+(alertFor(s)?'<p class="alert">'+h(alertFor(s))+'</p>':'')+(s.note?'<p>'+h(s.note)+'</p>':'')+'<details><summary>操作历史 · '+rows.length+'</summary>'+rows.slice(0,100).map(e=>'<div class="item"><strong>'+h(events[e.type]||e.type)+'</strong><p class="muted">'+h(date(e.at))+(typeof e.before==='number'?' · '+e.before+' g → '+e.after+' g':'')+(e.note?' · '+h(e.note):'')+'</p></div>').join('')+'</details></div>');
 }
+const sourceLinks=keys=>actions(...[...new Set(keys)].map(k=>{
+ const [label,url]=sources[k];
+ return '<a class="guide-link" target="_blank" rel="noopener noreferrer" href="'+h(url)+'">'+h(label)+' ↗</a>';
+}));
+const withUnit=(value,unit)=>value==null?'未发布':h(value)+' '+unit;
 function guidePage(s){
  const g=materialGuide(s);
- const reference='<div class="actions"><a class="guide-link" target="_blank" rel="noopener noreferrer" href="'+guideUrl+'">Bambu Filament Guide ↗</a><a class="guide-link" target="_blank" rel="noopener noreferrer" href="'+amsUrl+'">AMS 2 Pro 规格 ↗</a></div>';
- const info=g?'<div class="metrics">'+metric('热风循环烘箱',h(g.temperature)+' °C')+metric('烘干时间',h(g.hours)+' 小时')+metric('使用前烘干',g.required?'要求':'可选')+'</div>'+
- grid(['<article class="card stack"><h2>喷嘴与供料</h2><p>'+h(g.nozzle)+'</p><p>指南中的 AMS 供料 '+(g.feed?'支持':'不支持')+'。请核对具体 AMS 和打印机型号。</p></article>','<article class="card stack"><h2>保存方式</h2><p>'+(g.sealed?'指南标注密封并放入干燥剂。':'指南未将密封加干燥剂列为该条目的必要条件。')+'</p><p>上次烘干 '+h(date(s.lastDry))+'</p></article>'])+
- '<article class="card stack"><h2>AMS 2 Pro 烘干</h2><p>设备上限 65 °C。'+(g.amsExcluded?'规格表未将该材料列为支持烘干。':g.amsLimited?'Bambu 指南中的烘箱条件与设备能力有差异，AMS 2 Pro 可能无法彻底烘干。':'请按设备所显示的材料预设和厂商说明操作。')+'</p></article>':
- empty('暂无匹配参数','请查阅该品牌和产品的技术资料，确认设备与卷盘的温度限制。');
- return '<a class="back-link" href="#stock">← 返回库存</a>'+head(h(s.material)+' 材料指南',h(s.brand)+' · '+h(name(s)),actions(btn('卷盘详情','guide-details',s.id),btn('记录烘干','dry',s.id,'primary')))+
- (g?'<section class="guide-intro"><h2>'+h(g.name)+'</h2><p>'+(g.official?'已匹配 Bambu 指南条目。':'同类材料参考。请以实际品牌和系列的技术资料为准。')+'</p></section>':'')+
- info+'<article class="card stack guide-sources"><h2>提醒与资料来源</h2><p>'+h(alertFor(s)||'当前无烘干提醒。')+'</p><p class="muted">复查周期由应用设置决定。真空与 AMS 按 10% RH 估算，外挂按 70% RH 估算。</p>'+reference+'</article>';
+ const [level,health,control,airSources]=g.air;
+ const profileLabel=g.official?g.name:g.brandCategory?g.name:g.sources.length?'对照条目 · '+g.name:'暂无该系列的已收录参数';
+ const printFields=[['喷嘴温度',withUnit(g.nozzleTemp,'°C')],['打印腔温',h(g.chamber)],['打印工艺封箱',h(g.enclosure)],['AMS 供料',g.feed==null?'未列':g.feed?'支持':'不支持']];
+ return '<a class="back-link" href="#stock">← 返回库存</a>'+
+ head(h(s.material)+' 烘干打印参考',h(s.brand)+' · '+h(profileLabel),actions(btn('卷盘详情','guide-details',s.id),btn('记录烘干','dry',s.id,'primary')))+
+ '<div class="metrics">'+metric(g.temperature?g.method:'烘干温度',withUnit(g.temperature,'°C'))+metric('烘干时间',withUnit(g.hours,g.durationUnit||'小时'))+metric('打印前烘干',h(g.dry))+'</div>'+
+ grid(['<article class="card stack"><h2>打印参数</h2><dl class="guide-facts">'+printFields.map(([key,value])=>'<div><dt>'+key+'</dt><dd>'+value+'</dd></div>').join('')+'</dl></article>',
+ '<article class="card stack"><h2>健康与空气排放</h2><p><strong>排放关注度 · '+h(level)+'</strong></p><p>'+h(health)+'</p><p>'+h(control)+'</p></article>'])+
+ (g.ams?'<article class="card stack"><h2>AMS 2 Pro / AMS HT 烘干</h2><p>'+h(g.ams)+'</p></article>':g.temperature&&parseInt(g.temperature,10)>65?'<article class="card stack"><h2>AMS 2 Pro 烘干</h2><p>最高 65 °C · 低于该条目的 '+withUnit(g.temperature,'°C')+' 烘干条件。</p></article>':'')+
+ '<article class="card stack guide-sources"><h2>烘干记录与资料</h2><p>上次烘干 '+h(date(s.lastDry))+'</p><p>'+h(alertFor(s)||'当前无烘干提醒。')+'</p>'+sourceLinks([...g.sources,...airSources])+'</article>';
 }
 function drySheet(s){
  const g=materialGuide(s);
- const reference=g?'<p class="muted">'+(g.official?'官方烘箱参考':'同类烘箱参考')+' · '+h(g.name)+' '+h(g.temperature)+' °C / '+h(g.hours)+' 小时。</p>':'<p class="muted">请按该产品厂商给出的烘干条件填写。</p>';
- const fixed=g?.official&&typeof g.temperature==='number'&&!g.hours.includes('–');
- form('记录烘干完成','dry','<div class="wide stack">'+reference+(fixed?actions(btn('套用热风烘箱参数','guide-prefill',s.id)):'')+'<p id="dry-device-note" class="muted" hidden>AMS 2 Pro 最高 65 °C。请使用设备针对该材料的预设。</p></div>'+
- field('完成时间','at',localTime(),'datetime-local','required')+field('设备','dryer','','text','list="dry-devices"')+'<datalist id="dry-devices">'+opts(['AMS 2 Pro','AMS HT','热风循环烘箱'])+'</datalist>'+
+ const reference=g.temperature?'<p class="muted">'+h(g.name)+' · '+h(g.method)+' '+withUnit(g.temperature,'°C')+' / '+withUnit(g.hours,g.durationUnit||'小时')+' · 打印前烘干：'+h(g.dry)+'</p>':'<p class="muted">此系列未收录烘干参数。</p>';
+ const fixed=g.official&&/^\d+$/.test(g.temperature)&&/^\d+$/.test(g.hours);
+ form('记录烘干完成','dry','<div class="wide stack">'+reference+(fixed?actions(btn('套用 '+h(g.method)+' 参数','guide-prefill',s.id)):'')+'<p id="dry-device-note" class="muted" hidden>AMS 2 Pro 最高 65 °C。'+(g.ams?' '+h(g.ams):'')+'</p></div>'+
+ field('完成时间','at',localTime(),'datetime-local','required')+field('设备','dryer','','text','list="dry-devices"')+'<datalist id="dry-devices">'+opts(['AMS 2 Pro','AMS HT','热风烘箱'])+'</datalist>'+
  field('时长（分钟）','minutes','','number','min="1"')+field('实际设定温度（°C）','temperature','','number','min="0"')+field('备注','note'),s.id);
 }
-
 function amount(s){form('调整 '+h(name(s))+' 余量','amount','<div class="wide actions">'+[100,75,50,25,10,0].map(p=>btn(p+'%','preset',Math.round(s.weight*p/100))).join('')+'</div>'+field('余量滑块','slider',s.remaining,'range','min="0" max="'+s.weight+'"')+field('净余量（g）','grams',s.remaining,'number','min="0" max="'+s.weight+'" required')+select('确定方式','confidence',opts(['估算','称重'],s.confidence))+select('原因','reason',[['adjust','手动调整'],['print','打印消耗'],['loss','损耗'],['audit','盘点校正']].map(([k,v])=>option(k,v)).join(''))+field('含盘总重（可选 g）','gross','','number','min="0"')+field('空盘重量（g）','tare',s.tare,'number','min="0"')+field('备注','note'),s.id);}
 function moveForm(s){form('移动 '+h(name(s)),'move',select('目标位置','location',locations(s.location))+select('目标单卷槽位被占用','swap',opts(['停止并提示','交换位置'])),s.id,'确认移动');}
 class ExternalPlacementWarning extends Error {}
@@ -276,7 +282,7 @@ const acts={
  place:()=>form('新增位置','place',field('位置名称','name','','text','required')+field('容量（0 为不限）','capacity',0,'number','min="0" max="10000" required')),
  'filter-place':k=>{query='';material='';stockStatus='';selectedPlace=k;if(location.hash==='#stock')render();else location.hash='stock';},
  'guide-details':k=>detail(spool(state.data,k)),
- 'guide-prefill':k=>{const g=materialGuide(spool(state.data,k));if(!g?.official)return;$('[name=dryer]').value='热风循环烘箱';$('[name=temperature]').value=parseInt(g.temperature,10);$('[name=minutes]').value=parseInt(g.hours,10)*60;},
+ 'guide-prefill':k=>{const g=materialGuide(spool(state.data,k));if(!g?.official)return;$('[name=dryer]').value=g.method;$('[name=temperature]').value=parseInt(g.temperature,10);$('[name=minutes]').value=parseInt(g.hours,10)*(g.durationUnit==='分钟'?1:60);},
  dry:k=>drySheet(spool(state.data,k)),
  audit:()=>sheet('库存盘点',activeRolls().length?actions(btn('批量确认已盘点','audit-all'))+activeRolls().map(s=>'<div class="row item"><div><strong>'+h(name(s))+'</strong><p class="muted">'+h(placeName(s.location))+' · '+grams(s.remaining)+'</p></div>'+btn('盘点','audit-single',s.id)+'</div>').join(''):empty('没有待盘点卷盘')),
  'audit-all':()=>confirm('确认盘点','将所有在库卷盘标记为已核对。','audit-all'),
@@ -425,7 +431,7 @@ document.addEventListener('change',async e=>{
   if(input.name==='filter-place'){selectedPlace=input.value;render();}
   if(input.name==='dryer'&&$('#dry-device-note'))$('#dry-device-note').hidden=!/ams\s*2\s*pro/i.test(input.value);
   if(input.name==='family'){
-   const list=[...new Set([...(families[input.value]||[]),...state.data.spools.filter(s=>s.family===input.value).map(s=>s.material)])];
+   const list=[...new Set([...(families[input.value]||[]),...materialChoices(input.value),...state.data.spools.filter(s=>s.family===input.value).map(s=>s.material)])];
    $('#materials').innerHTML=opts(list);$('[name=material]').value=list[0]||'';
   }
   if(input.id==='album'&&input.files[0]){

@@ -132,3 +132,8 @@ video,#photo-preview img{max-width:100%;max-height:220px;display:block}
 @media(max-width:390px){.heading{gap:7px}.heading button{padding-inline:10px}.metric small{font-size:.69rem}.metric strong{font-size:1.12rem}}
 @media(prefers-reduced-motion:reduce){button{transition:none}}
 .placement-warning{padding:12px 0}
+.guide-facts{display:grid;gap:0;margin:0}
+.guide-facts div{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--outline-quiet)}
+.guide-facts div:last-child{border-bottom:0}
+.guide-facts dt{color:var(--muted)}
+.guide-facts dd{margin:0;text-align:right}

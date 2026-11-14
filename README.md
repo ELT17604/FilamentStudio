@@ -57,7 +57,9 @@ openssl rand -hex 32
 | `pw1` | Secret | 脚本输出的整行 `pbkdf2$100000$…` |
 | `SESSION_SECRET` | Secret | 上一步生成的随机签名密钥，至少 32 个字符 |
 
-添加账号时依次使用 `user2` / `pw2`、`user3` / `pw3`。每个用户名应唯一。数字对应固定的 R2 库存 ID。修改用户名或密码时保留原来的编号。密码校验使用 Cloudflare 运行时支持的 100,000 次 PBKDF2-SHA256，旧版 Sites 的校验值需用仓库内脚本重新生成。密码本身及实际密钥只保存在你的密码管理器或 Cloudflare Secret 中。修改会话密钥将让现有会话失效。
+添加账号时依次使用 `user2` / `pw2`、`user3` / `pw3`。每个用户名应唯一。数字对应固定的 R2 库存 ID。修改用户名或密码时保留原来的编号。密码校验使用 Cloudflare 运行时支持的 100,000 次 PBKDF2-SHA256，旧版 Sites 的校验值需用仓库内脚本重新生成。密码本身及实际密钥只保存在你的密码管理器或 Cloudflare Secret 中。
+
+`SESSION_SECRET` 用于给登录 Cookie 加上 HMAC-SHA256 签名。登录后浏览器携带 Cookie，服务器验证签名及有效期后，才从其中接受账号 ID 并定位 R2 文件。知道账号 ID 无法自行签出有效会话。该密钥独立于用户密码校验值，轮换它会让现有会话失效，用户重新登录即可。
 
 保存后重新部署，在 Pages 地址打开 **设置 → 云同步 → 登录**，输入明文用户名和原始密码。用测试卷盘验证同步后，可在 R2 对象列表检查对应的 `inventory/userN.json`。Pages 网页本身默认可访问，应用登录保护库存 API。如需限制整个站点的访问，可另外配置 Cloudflare Access。
 
