@@ -1,5 +1,5 @@
-import {handleApi} from '../../server/api.js';
+import { handleApi } from '../../server/api.js';
 
-export function onRequest({request,env}) {
- return handleApi(request,env);
+export function onRequest({ request, env }) {
+  return handleApi(request, env);
 }

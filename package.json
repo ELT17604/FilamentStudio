@@ -4,9 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test scripts/*.test.mjs"
+    "test": "node --test scripts/*.test.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "engines": {
     "node": ">=22"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "prettier": "3.6.2"
   }
 }

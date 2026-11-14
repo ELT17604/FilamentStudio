@@ -1,21 +1,31 @@
 import assert from 'node:assert/strict';
-import {test} from 'node:test';
-import {fresh} from '../public/model.js';
-import {syncPlan,mergeInventory} from '../public/sync.js';
-const remote=(data,tag='cloud')=>({tag,json:{data}});
-test('sync distinguishes initial upload, content equality, fast-forward and divergence',()=>{
- const base=fresh(),local=structuredClone(base),cloud=structuredClone(base);
- local.settings.low=20;cloud.settings.dryDays=40;
- const plan=(data,other)=>syncPlan({data,base,revision:2,synced:1,tag:'cloud'},remote(other));
- assert.equal(plan(local,base),'push');
- assert.equal(plan(base,cloud),'pull');
- assert.equal(plan(local,cloud),'conflict');
- assert.equal(plan(local,structuredClone(local)),'same');
- assert.equal(plan(local,null),'conflict');
- assert.equal(syncPlan({data:local,revision:1,synced:0,tag:'empty'},remote(null,'empty')),'push');
- assert.equal(syncPlan({data:local,revision:1,synced:0,tag:'"cloud"'},remote(cloud)),'push');
- assert.equal(syncPlan({data:base,revision:0,synced:0},remote(null,'empty')),'empty');
- assert.deepEqual(mergeInventory(base,local,cloud).settings,{dryDays:40,low:20});
- cloud.settings.low=30;
- assert.throws(()=>mergeInventory(base,local,cloud),/两端均修改/);
+import { test } from 'node:test';
+import { fresh } from '../public/model.js';
+import { syncPlan, mergeInventory } from '../public/sync.js';
+const remote = (data, tag = 'cloud') => ({ tag, json: { data } });
+test('sync distinguishes initial upload, content equality, fast-forward and divergence', () => {
+  const base = fresh(),
+    local = structuredClone(base),
+    cloud = structuredClone(base);
+  local.settings.low = 20;
+  cloud.settings.dryDays = 40;
+  const plan = (data, other) =>
+    syncPlan({ data, base, revision: 2, synced: 1, tag: 'cloud' }, remote(other));
+  assert.equal(plan(local, base), 'push');
+  assert.equal(plan(base, cloud), 'pull');
+  assert.equal(plan(local, cloud), 'conflict');
+  assert.equal(plan(local, structuredClone(local)), 'same');
+  assert.equal(plan(local, null), 'conflict');
+  assert.equal(
+    syncPlan({ data: local, revision: 1, synced: 0, tag: 'empty' }, remote(null, 'empty')),
+    'push',
+  );
+  assert.equal(
+    syncPlan({ data: local, revision: 1, synced: 0, tag: '"cloud"' }, remote(cloud)),
+    'push',
+  );
+  assert.equal(syncPlan({ data: base, revision: 0, synced: 0 }, remote(null, 'empty')), 'empty');
+  assert.deepEqual(mergeInventory(base, local, cloud).settings, { dryDays: 40, low: 20 });
+  cloud.settings.low = 30;
+  assert.throws(() => mergeInventory(base, local, cloud), /两端均修改/);
 });

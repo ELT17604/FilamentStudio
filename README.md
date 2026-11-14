@@ -6,14 +6,14 @@
 
 在 Cloudflare 控制台进入 **Workers & Pages → Create application → Pages → Connect to Git**，授权 Cloudflare GitHub App 访问 `ELT17604/FilamentStudio`。使用下列构建设置。
 
-| 项目 | 设置 |
-| --- | --- |
-| GitHub 仓库 | `ELT17604/FilamentStudio` |
-| Production branch | `main` |
-| Framework preset | None |
-| Root directory | 仓库根目录，留空 |
-| Build command | 留空 |
-| Build output directory | `public` |
+| 项目                   | 设置                      |
+| ---------------------- | ------------------------- |
+| GitHub 仓库            | `ELT17604/FilamentStudio` |
+| Production branch      | `main`                    |
+| Framework preset       | None                      |
+| Root directory         | 仓库根目录，留空          |
+| Build command          | 留空                      |
+| Build output directory | `public`                  |
 
 Pages 直接发布 `public/`，并自动编译仓库根目录的 `functions/`。只有 `/api/*` 进入 Pages Functions。无需独立创建 Worker，也无需配置 ChatGPT Sites。首次部署可以先打开网页使用本机库存。
 
@@ -23,11 +23,11 @@ Pages 直接发布 `public/`，并自动编译仓库根目录的 `functions/`。
 2. 打开 Pages 项目，进入 **Settings → Bindings → Add → R2 bucket**。绑定名填 **`BUCKET`**，选择实际的 R2 桶。配置 **Production**。如需在 **Preview** 测试，使用独立测试桶和独立凭据。
 3. 配置账号变量后重新部署，让绑定和变量生效。
 
-| R2 对象路径 | 用途 |
-| --- | --- |
-| `inventory/user1.json` | 第一个账号的当前库存，包含版本及保存信息 |
-| `recovery/user1/0.json` 至 `recovery/user1/9.json` | 写入前的轮换快照 |
-| `limits/…` | 登录和每个账号读写的限流状态 |
+| R2 对象路径                                        | 用途                                     |
+| -------------------------------------------------- | ---------------------------------------- |
+| `inventory/user1.json`                             | 第一个账号的当前库存，包含版本及保存信息 |
+| `recovery/user1/0.json` 至 `recovery/user1/9.json` | 写入前的轮换快照                         |
+| `limits/…`                                         | 登录和每个账号读写的限流状态             |
 
 服务端从已验证的会话确定账号 ID，并通过 R2 ETag 条件写入处理并发。每账号每分钟最多读取 120 次、写入 20 次，每次提交上限 8 MiB。预览和生产环境可独立配置。
 
@@ -51,10 +51,10 @@ openssl rand -hex 32
 
 在 Pages 项目的 **Settings → Variables and Secrets** 中，选中对应环境并添加下列变量。变量名区分大小写。
 
-| 变量名 | 类型 | 值 |
-| --- | --- | --- |
-| `user1` | Text | 你选择的用户名 |
-| `pw1` | Secret | 脚本输出的整行 `pbkdf2$100000$…` |
+| 变量名           | 类型   | 值                                       |
+| ---------------- | ------ | ---------------------------------------- |
+| `user1`          | Text   | 你选择的用户名                           |
+| `pw1`            | Secret | 脚本输出的整行 `pbkdf2$100000$…`         |
 | `SESSION_SECRET` | Secret | 上一步生成的随机签名密钥，至少 32 个字符 |
 
 添加账号时依次使用 `user2` / `pw2`、`user3` / `pw3`。每个用户名应唯一。数字对应固定的 R2 库存 ID。修改用户名或密码时保留原来的编号。密码校验使用 Cloudflare 运行时支持的 100,000 次 PBKDF2-SHA256，旧版 Sites 的校验值需用仓库内脚本重新生成。密码本身及实际密钥只保存在你的密码管理器或 Cloudflare Secret 中。
@@ -69,9 +69,12 @@ IndexedDB 按站点域名隔离。先在原站点使用 **设置 → 导出 JSON
 
 ## 开发与验证
 
-Node.js 22+ 下执行 `npm test`。测试直接调用 Pages Function 入口，用内存对象存储验证登录、隔离、并发冲突、重复写入、回退快照与限流。正式环境部署后，再用两个浏览器会话验证登录与同步，并确认 `/app.webmanifest`、`/sw.js` 返回应用资源。
+开发环境需要 Node.js 22 或更高版本。依次运行 `npm ci`、`npm run format:check` 和 `npm test`。修改后可用 `npm run format` 统一格式。浏览器应用无需打包，可通过本地 HTTP 服务器预览 `public/`。测试直接调用 Pages Function 入口，用内存对象存储验证登录、隔离、并发冲突、重复写入、回退快照与限流。正式环境部署后，再用两个浏览器会话验证登录与同步，并确认 `/app.webmanifest`、`/sw.js` 返回应用资源。
 
-- `public/` 存放页面、样式、PWA 资源与共享库存数据模型。
+- `public/app.js` 管理界面、交互和同步流程。
+- `public/inventory-store.js` 处理浏览器数据库，`public/model.js` 定义共享库存结构。
+- `public/sync.js` 负责版本比较和三方合并，`public/sw.js` 缓存离线应用资源。
+- `public/material-data.js` 和 `public/guide.js` 管理材料参数及烘干提醒。
 - `functions/api/[[path]].js` 是 Pages Functions 入口。
 - `server/api.js` 实现会话和 R2 库存 API。
 - `scripts/password-verifier.mjs` 在本地生成密码校验值。
@@ -83,3 +86,7 @@ Node.js 22+ 下执行 `npm test`。测试直接调用 Pages Function 入口，�
 首次在已有库存的设备登录时，选择「导入本地库存」，将未登录时保存的库存并入账号。保持页面打开，最后一次编辑后约 8 秒，应用会检查 R2 版本并上传有效变更。其他设备使用同一账号登录后可拉取库存，已打开的前台页面也会定期检查更新。
 
 「设置 → 手动同步」提供合并更新、本机覆盖和云端恢复。合并使用上次共同同步的数据比对双方修改，同一记录发生冲突时会提示选择。覆盖仍会校验云端版本，防止覆盖确认之后发生的新改动。
+
+## 许可证
+
+本项目代码以 [MIT License](LICENSE) 发布。材料指南链接的厂商文档和研究资料适用各自的使用条款。
