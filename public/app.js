@@ -260,12 +260,12 @@ async function api(path,method='GET',data,headers={}){
  const r=await fetch('./api/'+path,{method,cache:'no-store',headers:{...(path==='inventory'&&account?{'X-Inventory-Account':account.id}:{}),...headers,...(data?{'Content-Type':'application/json'}:{})},...(data?{body:JSON.stringify(data)}:{})});
  const json=await r.json();
  if(!r.ok)throw Object.assign(Error(json.error),{status:r.status,retry:+r.headers.get('Retry-After')||0});
- return {json,tag:r.headers.get('ETag')};
+ return {json,tag:r.headers.get('X-Inventory-Version')||r.headers.get('ETag')};
 }
 const quietMs=8000;
 function queue(ms=quietMs){
  clearTimeout(timer);
- if(account&&!conflict)timer=setTimeout(()=>sync(),ms);
+ if(account&&!conflict&&!comparison)timer=setTimeout(()=>{if(busy)queue(1000);else sync();},ms);
 }
 async function attach(user){
  clearTimeout(timer);
@@ -273,12 +273,15 @@ async function attach(user){
  if(user)localStorage.setItem('filament-account',JSON.stringify(user));else localStorage.removeItem('filament-account');
  state=await load(key());render();
 }
-async function acknowledge(k,local,remote,data=local.data,replace=false){
+async function acknowledge(k,local,remote,data=local.data,replace=false,committed=false){
  state=await transact(k,v=>{
-  if(replace&&v.revision!==local.revision)throw Error('本机库存已变更，请重新同步');
+  if(replace&&v.revision!==local.revision){
+   if(committed)return {...v,pending:null,needsReview:true};
+   throw Error('本机库存已变更，请重新同步');
+  }
   const revision=replace?v.revision+1:v.revision;
   return {...v,revision,synced:replace?revision:local.revision,tag:remote.tag,base:structuredClone(data),
-   ...(replace?{data,recovery:v.data}:{}),pending:null};
+   ...(replace?{data,recovery:v.data}:{}),pending:null,needsReview:false};
  });
  if(state.revision!==state.synced)queue();
 }
@@ -288,15 +291,17 @@ async function push(k,local,remote,data,replace=false){
   if(v.revision!==local.revision)throw Error('本机库存已变更，请重新同步');
   return {...v,pending:{id:op,localRevision:local.revision,data:structuredClone(data),replace}};
  });
- const result=await api('inventory','PUT',data,{'If-Match':remote.tag,'X-Operation-Id':op});
+ const result=await api('inventory','PUT',data,{'X-Inventory-Version':remote.tag,'If-Match':remote.tag,'X-Operation-Id':op});
  if(!result.tag)throw Error('云端未返回写入版本，请重试同步');
- await acknowledge(k,local,result,data,replace);
+ await acknowledge(k,local,result,data,replace,true);
 }
 function syncedMessage(){
- conflict=null;comparison=null;render();syncStatus('已同步 · '+new Date().toLocaleTimeString('zh-CN'));
+ conflict=null;comparison=null;render();
+ syncStatus(state.needsReview?'本机在同步期间有新编辑，等待重新比较。':state.revision===state.synced?'已同步 · '+new Date().toLocaleTimeString('zh-CN'):'本机有新编辑，等待下一次自动同步。');
+ if(state.needsReview||state.revision!==state.synced)queue();
 }
 async function sync(manual=false){
- if(!account||busy||(!manual&&conflict))return;
+ if(!account||busy||(!manual&&(conflict||comparison)))return;
  if(!navigator.onLine){syncStatus('当前离线，修改已保存在本机。');if(manual)toast(message);return;}
  const k=key();busy=true;
  try{
@@ -308,16 +313,16 @@ async function sync(manual=false){
   local=await load(k);
   if(local.pending&&local.pending.id===remote.json.operation&&remote.json.data){
    const pending=local.pending;
-   const replace=pending.replace&&pending.localRevision===local.revision;
-   await acknowledge(k,{...local,revision:pending.localRevision},remote,remote.json.data,replace);
+   await acknowledge(k,{...local,revision:pending.localRevision},remote,validate(remote.json.data),pending.replace,true);
    local=state;
   }
-  const plan=syncPlan(local,remote);
-  if(manual){comparison=remote;showConflict();return;}
-  if(plan==='conflict'){comparison=null;conflict=remote;syncStatus('本机和云端版本已分叉，请选择同步方式。');render();return;}
+  state=local;
+  const plan=local.needsReview?'conflict':syncPlan(local,remote);
+  if(manual){comparison={...remote,localRevision:local.revision};showConflict();return;}
+  if(plan==='conflict'){comparison=null;conflict={...remote,localRevision:local.revision};syncStatus('本机和云端版本已分叉，请选择同步方式。');render();return;}
   remaining=quietMs-(Date.now()-(local.editedAt||0));
   if(plan==='push'&&remaining>0){queue(remaining);return;}
-  if(plan==='empty'){syncStatus('云端尚无库存。可在 A 端登录后导入本地库存。');return;}
+  if(plan==='empty'){syncStatus('云端尚无库存。已有未登录库存时，可在设置中选择导入本地库存。');return;}
   if(plan==='push')await push(k,local,remote,local.data);
   if(plan==='pull')await acknowledge(k,local,remote,validate(remote.json.data),true);
   if(plan==='same'&&(local.tag!==remote.tag||local.revision!==local.synced||!local.base||local.pending)){
@@ -348,8 +353,12 @@ async function resolve(mode){
  const k=key();
  try{
   const local=await load(k),remote=await api('inventory');
+  state=local;
   if(!remote.tag)throw Error('云端未返回库存版本');
-  if(saved.tag!==remote.tag){comparison=remote;showConflict();throw Error('云端版本已变化，请重新确认同步方式');}
+  if(saved.tag!==remote.tag||saved.localRevision!==local.revision){
+   comparison={...remote,localRevision:local.revision};showConflict();
+   throw Error('同步预览已更新，请重新选择同步方式。');
+  }
   const cloud=remote.json.data;
   if(mode==='remote'){
    if(!cloud)throw Error('云端尚无可恢复库存');
@@ -362,7 +371,19 @@ async function resolve(mode){
   }
   panel.close();syncedMessage();
  }catch(e){
-  if(e.status===409){comparison=await api('inventory');showConflict();}
+  if(e.status===409){
+   conflict=saved;comparison=null;
+   syncStatus('写入期间云端版本已变化，请重新选择同步方式。');
+   try{
+    const [remote,local]=await Promise.all([api('inventory'),load(k)]);
+    comparison={...remote,localRevision:local.revision};
+   }catch{
+    showConflict();
+    throw Error('暂时无法读取最新云端版本。可保留本机数据，稍后重新打开手动同步。');
+   }
+   showConflict();
+   throw Error('已加载最新云端版本。请在下方重新选择同步方式。');
+  }
   throw e;
  }finally{busy=false;}
 }
@@ -388,7 +409,7 @@ const acts={
   restorePlacementForm();
   try{await submit(pending,true);}catch(e){showError(e);}
  },
- close:()=>{comparison=null;panel.close();},new:()=>edit(),detail:k=>detail(spool(state.data,k)),edit:k=>edit(spool(state.data,k)),duplicate:k=>edit(spool(state.data,k),true),amount:k=>amount(spool(state.data,k)),move:k=>moveForm(spool(state.data,k)),
+ close:()=>panel.close(),new:()=>edit(),detail:k=>detail(spool(state.data,k)),edit:k=>edit(spool(state.data,k)),duplicate:k=>edit(spool(state.data,k),true),amount:k=>amount(spool(state.data,k)),move:k=>moveForm(spool(state.data,k)),
  preset:k=>{$('[name=slider]').value=$('[name=grams]').value=k;$('[name=gross]').value='';},
  load:k=>{
   const list=activeRolls().filter(s=>s.location!==k);
@@ -434,7 +455,7 @@ const acts={
  'confirm-backup':async()=>{state=await transact(key(),v=>({...v,recovery:v.data,data:backupData,revision:v.revision+1,editedAt:Date.now()}));panel.close();render();queue();toast('已恢复备份');},
  login:()=>form('登录云同步','login',field('用户名','username',account?.name,'text','autocomplete="username" required')+field('密码','password','','password','autocomplete="current-password" required')+'<p class="wide muted">账号库存与本地库存分别保存。你可以在登录后导入本地库存。</p>','','登录'),
  logout:async()=>{if(busy)throw Error('请等待同步完成');await api('logout','POST');await attach(null);syncStatus('已退出云同步。');},
- sync:()=>sync(true),conflict:showConflict,resolve,
+ sync:()=>sync(true),conflict:()=>sync(true),resolve,
  adopt:()=>confirm('导入本地库存','将此设备未登录时保存的库存并入当前账号，并自动同步到云端。','adopt'),
  'confirm-adopt':async()=>{const previous=await load('local');if(!previous.data.spools.length)throw Error('此设备无可导入的本地卷盘');await save(d=>{Object.assign(d,merge(d,previous.data));d.settings.guestImported=true;},'已导入本地库存，等待自动同步');},
  persist:async()=>toast(await navigator.storage?.persist?.()?'已获得浏览器持久存储权限':'浏览器未授予持久存储权限'),
@@ -597,7 +618,7 @@ document.addEventListener('change',async e=>{
   }
  }catch(error){showError(error);}
 });
-panel.addEventListener('close',()=>{stopCamera();placementWarning=null;});
+panel.addEventListener('close',()=>{stopCamera();placementWarning=null;if(comparison){comparison=null;queue();}});
 panel.addEventListener('cancel',e=>{if(placementWarning){e.preventDefault();restorePlacementForm();}});
 window.addEventListener('hashchange',render);
 window.addEventListener('online',()=>queue(30));

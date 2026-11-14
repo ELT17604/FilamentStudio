@@ -12,7 +12,7 @@ export function syncPlan(local,remote){
  const cloud=remote.json.data;
  if(cloud&&sameInventory(local.data,cloud))return 'same';
  if(!cloud){
-  if(local.tag&&local.tag!=='"empty"')return 'conflict';
+  if(local.tag&&local.tag!=='"empty"'&&local.tag!=='empty')return 'conflict';
   return local.revision!==local.synced||local.data.spools.length?'push':'empty';
  }
  if(local.base){
@@ -20,8 +20,8 @@ export function syncPlan(local,remote){
   if(sameInventory(cloud,local.base))return 'push';
   return 'conflict';
  }
- if(local.revision===local.synced)return 'pull';
- return local.tag===remote.tag?'push':'conflict';
+ if(local.revision===local.synced)return !local.tag&&local.data.spools.length?'conflict':'pull';
+ return local.tag===remote.tag||local.tag==='"'+remote.tag+'"'?'push':'conflict';
 }
 function choose(base,local,cloud,label){
  if(sameInventory(local,cloud)||sameInventory(base,cloud))return local;

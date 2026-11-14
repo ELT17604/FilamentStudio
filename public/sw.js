@@ -1,4 +1,4 @@
-const cacheName='filament-studio-v8';
+const cacheName='filament-studio-v9';
 const paths=['./','./app.js','./sync.js','./model.js','./guide.js','./material-data.js','./style.css','./app.webmanifest','./icon-192.png','./icon-512.png'];
 self.addEventListener('install',event=>event.waitUntil((async()=>{
  const cache=await caches.open(cacheName);

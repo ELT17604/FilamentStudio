@@ -54,6 +54,13 @@ async function account(req,env,accounts){
   return sig&&equal(sig,await hmac(env.SESSION_SECRET,payload+'|'+user.name+'|'+user.password))?user:null;
  }catch{return null;}
 }
+// Inventory revisions travel separately from the HTTP cache validator.
+const inventoryVersion=object=>object?.etag||'empty';
+const inventoryHeaders=object=>({
+ 'Cache-Control':'no-store, no-transform',
+ 'X-Inventory-Version':inventoryVersion(object),
+ ETag:object?.httpEtag||'"empty"'
+});
 async function api(req,env,path){
  const method=req.method,bucket=env.BUCKET;
  const accounts=Object.keys(env).filter(k=>/^user[1-9]\d{0,2}$/.test(k)).map(id=>({id,name:env[id],password:env['pw'+id.slice(4)]})).filter(a=>a.name&&/^pbkdf2\$100000\$[\w-]{22}\$[\w-]{43}$/.test(a.password||''));
@@ -82,22 +89,23 @@ async function api(req,env,path){
  const key='inventory/'+user.id+'.json';
  if(method==='GET'){
   const old=await bucket.get(key);
-  return old?new Response(old.body,{headers:{'Content-Type':'application/json','Cache-Control':'no-store',ETag:old.httpEtag}}):reply({data:null},200,{ETag:'"empty"'});
+  return old?new Response(old.body,{headers:{'Content-Type':'application/json',...inventoryHeaders(old)}}):reply({data:null},200,inventoryHeaders(null));
  }
- const tag=req.headers.get('If-Match'),operation=req.headers.get('X-Operation-Id');
- if(!tag)return error('请先读取版本',428);
+ const version=req.headers.get('X-Inventory-Version'),tag=req.headers.get('If-Match'),operation=req.headers.get('X-Operation-Id');
+ if(!version&&!tag)return error('请先读取版本',428);
  if(!/^[a-f0-9-]{36}$/.test(operation||''))return error('操作标识无效',400);
  let data;
  try{data=validate(await readJson(req,8*1024*1024));}catch(e){return error(e.message,400);}
  const old=await bucket.get(key);
- if(old?.customMetadata?.operation===operation)return reply({ok:true},200,{ETag:old.httpEtag});
- if((old?.httpEtag||'"empty"')!==tag)return error('云端库存已更新，请处理冲突',409);
+ if(old?.customMetadata?.operation===operation)return reply({ok:true},200,inventoryHeaders(old));
+ const conflictError=()=>reply({error:'云端库存已更新，请重新确认同步方式',code:'inventory_conflict'},409);
+ if(version?version!==inventoryVersion(old):tag!==(old?.httpEtag||'"empty"'))return conflictError();
  const revision=Number(old?.customMetadata?.revision||0)+1;
  if(old){
   await bucket.put('recovery/'+user.id+'/'+((revision-1)%10)+'.json',await old.text(),{httpMetadata:{contentType:'application/json'}});
  }
  const saved=await bucket.put(key,JSON.stringify({data,revision,operation,savedAt:new Date().toISOString()}),{onlyIf:onlyIf(old),customMetadata:{revision:String(revision),operation},httpMetadata:{contentType:'application/json'}});
- return saved?reply({ok:true,revision},200,{ETag:saved.httpEtag}):error('云端库存已更新，请处理冲突',409);
+ return saved?reply({ok:true,revision},200,inventoryHeaders(saved)):conflictError();
 }
 export async function handleApi(request,env){
  const path=new URL(request.url).pathname;
