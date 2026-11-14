@@ -58,9 +58,11 @@ function form(title,kind,body,key='',label='保存'){sheet(title,'<form class="f
 function card(s){
  return '<article class="card spool stack"><div class="row">'+reel(s)+'<div><h3>'+h(name(s))+'</h3><small>'+h(s.brand)+' · '+h(s.colorName||s.color)+'</small></div><small>'+h(s.status)+'</small></div><small>'+h(placeName(s.location))+'</small><div class="track" role="progressbar" aria-label="余量" aria-valuenow="'+pct(s)+'"><i style="width:'+pct(s)+'%"></i></div><div class="row"><strong>'+grams(s.remaining)+'</strong><small>'+h(s.confidence||'估算')+' · '+pct(s)+'%</small></div>'+actions(btn('详情','detail',s.id),btn('调余量','amount',s.id))+'</article>';
 }
+const isAms2Pro=dev=>dev.slots===4&&/ams\s*2\s*pro/i.test(dev.name);
+const inAms=(s,dev)=>Array.from({length:dev.slots},(_,i)=>dev.id+'-'+(i+1)).includes(s.location);
 function ams(dev){
  const slots=allPlaces(state.data).filter(p=>Array.from({length:dev.slots},(_,i)=>dev.id+'-'+(i+1)).includes(p.id));
- return '<article class="hero"><small>耗材装载 · 按 10% RH 估算 · '+slots.filter(p=>state.data.spools.some(s=>s.location===p.id)).length+'/'+dev.slots+'</small><h2>'+h(dev.name)+'</h2><div class="slots">'+slots.map((p,i)=>{const s=state.data.spools.find(x=>x.location===p.id);return btn('<small>槽位 '+(i+1)+'</small>'+reel(s)+'<strong>'+h(s?.material||'空槽位')+'</strong>'+(s?'<small>'+pct(s)+'% · '+h(s.brand)+'</small>':''),s?'detail':'load',s?.id||p.id,'slot');}).join('')+'</div></article>';
+ return '<article class="hero"><small>耗材装载 · 按 10% RH 估算 · '+slots.filter(p=>state.data.spools.some(s=>s.location===p.id)).length+'/'+dev.slots+'</small><h2>'+h(dev.name)+'</h2><div class="slots">'+slots.map((p,i)=>{const s=state.data.spools.find(x=>x.location===p.id);return btn('<small>槽位 '+(i+1)+'</small>'+reel(s)+'<strong>'+h(s?.material||'空槽位')+'</strong>'+(s?'<meter class="slot-remaining" min="0" max="100" value="'+pct(s)+'" aria-label="耗材余量">'+pct(s)+'%</meter><small class="slot-brand">'+h(s.brand)+'</small>':''),s?'detail':'load',s?.id||p.id,'slot');}).join('')+'</div>'+(isAms2Pro(dev)&&state.data.spools.some(s=>active(s)&&inAms(s,dev))?'<div class="ams-actions">'+btn('批量记录完全烘干','dry-batch',dev.id)+'</div>':'')+'</article>';
 }
 const grid=rows=>'<div class="grid">'+rows.join('')+'</div>';
 const metric=(l,n)=>'<article class="metric"><small>'+l+'</small><strong>'+n+'</strong></article>';
@@ -112,13 +114,28 @@ function render(){
  main.innerHTML=selected?guidePage(selected):({home,stock,places,stats,settings}[p])();
 }
 const optionsDamp=value=>option('no','未标记',value?'yes':'no')+option('yes','发现受潮迹象',value?'yes':'no');
+
+const customChoice='__filament_custom__';
+const choiceOptions=(list,current)=>opts(list,current)+option(customChoice,'＋ 手动输入',current);
+const materialList=(data,family)=>[...new Set([...(families[family]||[]),...materialChoices(family),...(data.settings.customMaterials?.[family]||[]),...data.spools.filter(s=>s.family===family).map(s=>s.material)])];
+const editableChoice=(title,key,list,value)=>
+ select(title,key,choiceOptions(list,value))+
+ '<label class="wide" hidden>输入'+title+'<input name="'+key+'Custom" type="text" disabled></label>';
+function toggleCustomChoice(control){
+ const custom=control.form.elements[control.name+'Custom'];
+ const enabled=control.value===customChoice;
+ custom.closest('label').hidden=!enabled;
+ custom.disabled=!enabled;
+ custom.required=enabled;
+ if(enabled)custom.focus();
+}
 function edit(s,copy=false){
  const x=s||{family:'PETG',material:'PETG-MATTE',brand:'Bambu Lab',weight:1000,color:'#85bba6',bought:formatDate(),status:'未开封',rfid:'未知'};
- const brands=[...new Set([...builtBrands,...state.data.spools.map(s=>s.brand)])];
- const dict=[...new Set([...(families[x.family]||[]),...materialChoices(x.family),...state.data.spools.filter(s=>s.family===x.family).map(s=>s.material)])];
+ const brands=[...new Set([...builtBrands,...(state.data.settings.customBrands||[]),...state.data.spools.map(s=>s.brand),x.brand])];
+ const dict=[...new Set([...materialList(state.data,x.family),x.material])];
  form(s&&!copy?'编辑耗材':'新增耗材','spool',
- field('品牌','brand',x.brand,'text','required list="brands"')+'<datalist id="brands">'+opts(brands)+'</datalist>'+
- select('材料大类','family',opts(Object.keys(families),x.family))+field('材料系列','material',x.material,'text','required list="materials"')+'<datalist id="materials">'+opts(dict)+'</datalist>'+
+ editableChoice('品牌','brand',brands,x.brand)+
+ select('材料大类','family',opts(Object.keys(families),x.family))+editableChoice('材料系列','material',dict,x.material)+
  field('颜色名称','colorName',x.colorName)+field('颜色','color',x.color,'color')+field('HEX 色值','hex',x.color,'text','pattern="#[0-9a-fA-F]{6}" required')+
  '<div class="wide">'+actions(btn('摄像头取色','camera'),btn('相册取色','album'))+'<input id="album" type="file" accept="image/*" hidden><div id="photo-preview"></div></div>'+
  field('初始净重量（g）','weight',x.weight,'number','min="1" max="100000" required')+field('购买日期','bought',copy?formatDate():x.bought,'date','max="'+formatDate()+'" required')+
@@ -155,8 +172,31 @@ function drySheet(s){
  const reference=g.temperature?'<p class="muted">'+h(g.name)+' · '+h(g.method)+' '+withUnit(g.temperature,'°C')+' / '+withUnit(g.hours,g.durationUnit||'小时')+' · 打印前烘干：'+h(g.dry)+'</p>':'<p class="muted">此系列未收录烘干参数。</p>';
  const fixed=g.official&&/^\d+$/.test(g.temperature)&&/^\d+$/.test(g.hours);
  form('记录烘干完成','dry','<div class="wide stack">'+reference+(fixed?actions(btn('套用 '+h(g.method)+' 参数','guide-prefill',s.id)):'')+'<p id="dry-device-note" class="muted" hidden>AMS 2 Pro 最高 65 °C。'+(g.ams?' '+h(g.ams):'')+'</p></div>'+
- field('完成时间','at',localTime(),'datetime-local','required')+field('设备','dryer','','text','list="dry-devices"')+'<datalist id="dry-devices">'+opts(['AMS 2 Pro','AMS HT','热风烘箱'])+'</datalist>'+
- field('时长（分钟）','minutes','','number','min="1"')+field('实际设定温度（°C）','temperature','','number','min="0"')+field('备注','note'),s.id);
+ deviceChoice(s)+'<div class="wide">'+btn('一键记录完全烘干','dry-now',s.id,'primary')+'</div>'+
+ '<details class="wide"><summary>填写烘干参数</summary><div class="forms">'+
+ field('完成时间','at',localTime(),'datetime-local','required')+
+ field('时长（分钟）','minutes','','number','min="1"')+field('实际设定温度（°C）','temperature','','number','min="0"')+field('备注','note')+'</div></details>',s.id,'保存参数记录');
+ $('#dry-device-note').hidden=!/ams\s*2\s*pro/i.test(dryDevice(panel.querySelector('form')));
+}
+function deviceChoice(s){
+ const current=state.data.devices.find(dev=>inAms(s,dev))?.name||state.data.settings.lastDryer||'AMS 2 Pro';
+ return editableChoice('烘干设备','dryer',[...new Set(['AMS 2 Pro','AMS HT','热风烘箱',...state.data.devices.map(dev=>dev.name),current])],current);
+}
+function dryDevice(form){
+ const device=form.elements.dryer;
+ return (device.value===customChoice?form.elements.dryerCustom.value:device.value).trim();
+}
+function recordDry(d,s,at,device,parameters=[],complete=false){
+ if(!active(s))throw Error('卷盘已不在库存');
+ if(!s.lastDry||s.lastDry<=at){s.lastDry=at;s.damp=false;}
+ if(s.status==='烘干中')s.status='已开封';
+ log(d,s,'dry','',at,[at,device,complete?'完全烘干':'',...parameters].filter(Boolean).join(' · '));
+ d.settings.lastDryer=device;
+}
+function dryBatch(dev){
+ const rolls=state.data.spools.filter(s=>active(s)&&inAms(s,dev)).sort((a,b)=>a.location.localeCompare(b.location));
+ form('批量记录完全烘干','dry-batch','<p class="wide muted">'+h(dev.name)+' · 选择本次已烘干的槽位</p>'+
+ rolls.map(s=>'<label class="dry-roll wide"><input type="checkbox" name="roll" value="'+h(s.id)+'" data-slot="'+h(s.location)+'" checked><span>'+h(placeName(s.location))+' · '+h(name(s))+'</span></label>').join(''),dev.id,'记录选中的卷盘');
 }
 function amount(s){form('调整 '+h(name(s))+' 余量','amount','<div class="wide actions">'+[100,75,50,25,10,0].map(p=>btn(p+'%','preset',Math.round(s.weight*p/100))).join('')+'</div>'+field('余量滑块','slider',s.remaining,'range','min="0" max="'+s.weight+'"')+field('净余量（g）','grams',s.remaining,'number','min="0" max="'+s.weight+'" required')+select('确定方式','confidence',opts(['估算','称重'],s.confidence))+select('原因','reason',[['adjust','手动调整'],['print','打印消耗'],['loss','损耗'],['audit','盘点校正']].map(([k,v])=>option(k,v)).join(''))+field('含盘总重（可选 g）','gross','','number','min="0"')+field('空盘重量（g）','tare',s.tare,'number','min="0"')+field('备注','note'),s.id);}
 function moveForm(s){form('移动 '+h(name(s)),'move',select('目标位置','location',locations(s.location))+select('目标单卷槽位被占用','swap',opts(['停止并提示','交换位置'])),s.id,'确认移动');}
@@ -183,6 +223,8 @@ function merge(current,extra){
  for(const k of ['spools','events','devices','places']){
   const ids=new Set(next[k].map(x=>x.id));for(const x of extra[k])if(!ids.has(x.id))next[k].push(x);
  }
+ next.settings.customBrands=[...new Set([...(next.settings.customBrands||[]),...(extra.settings.customBrands||[])])];
+ next.settings.customMaterials=Object.fromEntries(Object.keys(families).map(family=>[family,[...new Set([...(next.settings.customMaterials?.[family]||[]),...(extra.settings.customMaterials?.[family]||[])])]]));
  return validate(next);
 }
 function syncStatus(text){
@@ -282,8 +324,14 @@ const acts={
  place:()=>form('新增位置','place',field('位置名称','name','','text','required')+field('容量（0 为不限）','capacity',0,'number','min="0" max="10000" required')),
  'filter-place':k=>{query='';material='';stockStatus='';selectedPlace=k;if(location.hash==='#stock')render();else location.hash='stock';},
  'guide-details':k=>detail(spool(state.data,k)),
- 'guide-prefill':k=>{const g=materialGuide(spool(state.data,k));if(!g?.official)return;$('[name=dryer]').value=g.method;$('[name=temperature]').value=parseInt(g.temperature,10);$('[name=minutes]').value=parseInt(g.hours,10)*(g.durationUnit==='分钟'?1:60);},
+ 'guide-prefill':k=>{const g=materialGuide(spool(state.data,k));if(!g?.official)return;const select=$('[name=dryer]');if(!Array.from(select.options).some(o=>o.value===g.method))select.add(new Option(g.method,g.method));select.value=g.method;toggleCustomChoice(select);$('#dry-device-note').hidden=true;panel.querySelector('details')?.setAttribute('open','');$('[name=temperature]').value=parseInt(g.temperature,10);$('[name=minutes]').value=parseInt(g.hours,10)*(g.durationUnit==='分钟'?1:60);},
  dry:k=>drySheet(spool(state.data,k)),
+ 'dry-now':k=>{
+  const device=dryDevice(panel.querySelector('form'));
+  if(!device)throw Error('请选择或输入烘干设备');
+  return save(d=>recordDry(d,spool(d,k),now(),device,[],true),'已记录完全烘干');
+ },
+ 'dry-batch':k=>{const dev=state.data.devices.find(d=>d.id===k);if(dev&&isAms2Pro(dev))dryBatch(dev);},
  audit:()=>sheet('库存盘点',activeRolls().length?actions(btn('批量确认已盘点','audit-all'))+activeRolls().map(s=>'<div class="row item"><div><strong>'+h(name(s))+'</strong><p class="muted">'+h(placeName(s.location))+' · '+grams(s.remaining)+'</p></div>'+btn('盘点','audit-single',s.id)+'</div>').join(''):empty('没有待盘点卷盘')),
  'audit-all':()=>confirm('确认盘点','将所有在库卷盘标记为已核对。','audit-all'),
  'confirm-audit-all':()=>save(d=>{for(const s of d.spools.filter(active)){s.lastAudit=now();log(d,s,'audit',s.remaining,s.remaining);}},'已核对在库卷盘'),
@@ -364,19 +412,27 @@ async function submit(form,allowExternal=false){
  await save(d=>{
   if(kind==='spool'){
    const weight=n('weight'),qty=k?1:n('qty');
-   if(!v('brand')||!v('material')||!Number.isInteger(qty)||qty<1||qty>100)throw Error('请检查品牌、材料和卷数');
+   const brand=v('brand')===customChoice?v('brandCustom'):v('brand');
+   const enteredMaterial=v('material')===customChoice?v('materialCustom'):v('material');
+   const material=enteredMaterial.toUpperCase()==='PLA-SIL'?'PLA-SILK':enteredMaterial;
+   if(!brand||!material||!Number.isInteger(qty)||qty<1||qty>100)throw Error('请检查品牌、材料和卷数');
    if(v('opened')&&v('opened')<v('bought'))throw Error('开封时间早于购买日期');
    for(let i=0;i<qty;i++){
     const s=k?spool(d,k):{id:id(),remaining:weight,created:now(),confidence:'估算',location:''};
     if(weight<s.remaining)throw Error('初始净重量不能低于当前余量');
-    const m=v('material');
-    Object.assign(s,Object.fromEntries(['family','brand','colorName','bought','name','sku','lot','opened','tare','price','status','rfid','label','note'].map(a=>[a,v(a)])),{weight,color:v('hex'),material:m.toUpperCase()==='PLA-SIL'?'PLA-SILK':m,modified:now()});
+    Object.assign(s,Object.fromEntries(['family','colorName','bought','name','sku','lot','opened','tare','price','status','rfid','label','note'].map(a=>[a,v(a)])),{brand,weight,color:v('hex'),material,modified:now()});
     if(s.status==='未开封'&&s.opened)s.status='已开封';
     s.damp=v('damp')==='yes';
    if(s.status==='已耗尽')s.remaining=0;
     if(!k)d.spools.push(s);
     move(d,s,v('location'),false,allowExternal);
     log(d,s,k?'edit':'purchase');
+   }
+   if(v('brand')===customChoice)d.settings.customBrands=[...new Set([...(d.settings.customBrands||[]),brand])];
+   if(v('material')===customChoice){
+    const family=v('family');
+    d.settings.customMaterials??={};
+    d.settings.customMaterials[family]=[...new Set([...(d.settings.customMaterials[family]||[]),material])];
    }
   }
   if(kind==='amount'||kind==='audit'){
@@ -398,16 +454,25 @@ async function submit(form,allowExternal=false){
   if(kind==='device')d.devices.push({id:id(),name:v('name'),slots:n('slots')});
   if(kind==='place')d.places.push({id:id(),name:v('name'),capacity:n('capacity')});
   if(kind==='dry'){
-   if(/ams\s*2\s*pro/i.test(v('dryer'))&&n('temperature')>65)throw Error('AMS 2 Pro 的最高烘干温度为 65 °C，请核对设备和实际记录');
-   const s=spool(d,k),t=new Date(v('at'));
+   const dryer=dryDevice(form);
+   if(!dryer)throw Error('请选择或输入烘干设备');
+   if(/ams\s*2\s*pro/i.test(dryer)&&n('temperature')>65)throw Error('AMS 2 Pro 的最高烘干温度为 65 °C，请核对设备和实际记录');
+   const t=new Date(v('at'));
    if(t>Date.now()+60000)throw Error('完成时间晚于当前时间');
-   const at=t.toISOString();
-   if(!s.lastDry||s.lastDry<=at){s.lastDry=at;s.damp=false;}
-   if(s.status==='烘干中')s.status='已开封';
-   const note=[at,v('dryer'),v('minutes')?v('minutes')+' 分钟':'',v('temperature')?v('temperature')+' °C':'',v('note')].filter(Boolean).join(' · ');
-   log(d,s,'dry','',at,note);
+   recordDry(d,spool(d,k),t.toISOString(),dryer,[v('minutes')?v('minutes')+' 分钟':'',v('temperature')?v('temperature')+' °C':'',v('note')]);
   }
-  if(kind==='rules')d.settings={low:n('low'),dryDays:n('dryDays')};
+  if(kind==='dry-batch'){
+   const dev=d.devices.find(x=>x.id===k);
+   const checked=Array.from(form.querySelectorAll('[name=roll]:checked'));
+   if(!dev||!isAms2Pro(dev)||!checked.length)throw Error('请至少选择一个 AMS 2 Pro 槽位');
+   const at=now();
+   for(const control of checked){
+    const s=spool(d,control.value);
+    if(s.location!==control.dataset.slot||!inAms(s,dev))throw Error('槽位卷盘已变更，请重新打开批量记录');
+    recordDry(d,s,at,dev.name,[],true);
+   }
+  }
+  if(kind==='rules')Object.assign(d.settings,{low:n('low'),dryDays:n('dryDays')});
  });
 }
 document.addEventListener('click',e=>{const b=e.target.closest('[data-action]');if(e.target.closest('.guide-link'))panel.close();if(b&&acts[b.dataset.action])Promise.resolve().then(()=>acts[b.dataset.action](b.dataset.key)).catch(showError);});
@@ -429,10 +494,16 @@ document.addEventListener('change',async e=>{
   if(input.name==='filter-status'){stockStatus=input.value;render();}
   if(input.name==='filter-material'){material=input.value;render();}
   if(input.name==='filter-place'){selectedPlace=input.value;render();}
-  if(input.name==='dryer'&&$('#dry-device-note'))$('#dry-device-note').hidden=!/ams\s*2\s*pro/i.test(input.value);
-  if(input.name==='family'){
-   const list=[...new Set([...(families[input.value]||[]),...materialChoices(input.value),...state.data.spools.filter(s=>s.family===input.value).map(s=>s.material)])];
-   $('#materials').innerHTML=opts(list);$('[name=material]').value=list[0]||'';
+  if(['dryer','dryerCustom'].includes(input.name)&&$('#dry-device-note')){
+   if(input.name==='dryer')toggleCustomChoice(input);
+   $('#dry-device-note').hidden=!/ams\s*2\s*pro/i.test(dryDevice(input.form));
+  }
+  if(input.form?.dataset.kind==='spool'&&['brand','material'].includes(input.name))toggleCustomChoice(input);
+  if(input.form?.dataset.kind==='spool'&&input.name==='family'){
+   const material=input.form.elements.material;
+   material.innerHTML=choiceOptions(materialList(state.data,input.value));
+   input.form.elements.materialCustom.value='';
+   toggleCustomChoice(material);
   }
   if(input.id==='album'&&input.files[0]){
    stopCamera();const photo=new Image(),url=URL.createObjectURL(input.files[0]);

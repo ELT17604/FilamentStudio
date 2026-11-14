@@ -12,7 +12,7 @@ export function materialGuide(spool){
  return {...profile,air};
 }
 export function moistureSensitive(s){
- const family=norm(s.family),material=norm(s.material);
+ const family=normalize(s.family),material=normalize(s.material);
  const profile=resolveMaterial(s);
  return ['PA','PPA','TPU','TPE','PC','PETG','PVA','BVOH'].includes(family)||
   /^(PA[0-9]|PAHT|NYLON|PPA|TPU|TPE|PC|PETG|PVA|BVOH|PET CF)(?:\b|[0-9])/.test(material)||

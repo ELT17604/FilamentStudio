@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {materialGuide,dryingReminder} from '../public/guide.js';
+import {materialGuide,dryingReminder,moistureSensitive} from '../public/guide.js';
 import {sources,materialChoices,families} from '../public/material-data.js';
 
 const guide=(brand,family,material)=>materialGuide({brand,family,material});
@@ -30,4 +30,10 @@ test('brand aliases, engineering ranges and exposure classifications',()=>{
  assert.equal(guide('Bambu Lab','PPS','PPS-CF').chamber,'60–90 °C');
  assert.equal(guide('eSUN','其他','HIPS').air[0],'较高');
  assert.equal(guide('Unknown','其他','Unknown').air[0],'未分级');
+});
+
+test('humidity-sensitive rolls can be classified before moving to the external holder',()=>{
+ assert.equal(moistureSensitive({brand:'Bambu Lab',family:'PETG',material:'PETG Matte'}),true);
+ assert.equal(moistureSensitive({brand:'Bambu Lab',family:'PLA',material:'PLA-BASIC'}),false);
+ assert.equal(moistureSensitive({brand:'Bambu Lab',family:'其他',material:'Support for PLA'}),true);
 });

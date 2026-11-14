@@ -137,3 +137,22 @@ video,#photo-preview img{max-width:100%;max-height:220px;display:block}
 .guide-facts div:last-child{border-bottom:0}
 .guide-facts dt{color:var(--muted)}
 .guide-facts dd{margin:0;text-align:right}
+
+/* Bound intrinsic date controls in WebKit and keep all form controls aligned. */
+.forms label{grid-template-columns:minmax(0,1fr)}
+.forms label[hidden]{display:none}
+.forms input,.forms select,.forms textarea{max-inline-size:100%;min-inline-size:0}
+.forms input[type=date],.forms input[type=datetime-local]{display:block;inline-size:100%}
+.forms input::-webkit-date-and-time-value{min-inline-size:0;text-align:start}
+.slot-remaining{display:block;inline-size:80%;max-inline-size:112px;block-size:8px;appearance:none;border:0;border-radius:999px;background:var(--surface-high)}
+.slot-remaining::-webkit-meter-bar{background:var(--surface-high);border:0;border-radius:999px}
+.slot-remaining::-webkit-meter-optimum-value{background:var(--primary);border-radius:999px}
+.slot-remaining::-moz-meter-bar{background:var(--primary);border-radius:999px}
+.slot-brand{display:block;max-inline-size:100%;overflow-wrap:anywhere;text-align:center}
+@media(max-width:480px){
+ .forms label:has(input[type=date],input[type=datetime-local]){grid-column:1/-1}
+}
+
+.ams-actions{margin-top:12px}
+.dry-roll{display:flex;align-items:center;gap:10px;min-height:48px}
+.forms .dry-roll input{inline-size:22px;min-height:22px;flex:none}
