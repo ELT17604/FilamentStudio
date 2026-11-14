@@ -2,15 +2,28 @@
   "id": "./",
   "start_url": "./",
   "scope": "./",
-  "name": "Filament Studio 耗材工作室",
-  "short_name": "Filament",
-  "lang": "zh-CN",
+  "name": "Filament Studio",
+  "short_name": "Filament Studio",
+  "lang": "en",
   "display": "standalone",
   "theme_color": "#fbf8f4",
   "background_color": "#fbf8f4",
   "icons": [
-    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }

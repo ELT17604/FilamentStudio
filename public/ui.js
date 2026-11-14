@@ -19,8 +19,8 @@ export function option(value, label = value, current) {
   return `<option value="${escapeHtml(value)}"${selected}>${escapeHtml(label)}</option>`;
 }
 
-export function options(values, current) {
-  return values.map((value) => option(value, value, current)).join('');
+export function options(values, current, label = (value) => value) {
+  return values.map((value) => option(value, label(value), current)).join('');
 }
 
 export function field(label, name, value = '', type = 'text', attributes = '') {

@@ -27,5 +27,5 @@ test('sync distinguishes initial upload, content equality, fast-forward and dive
   assert.equal(syncPlan({ data: base, revision: 0, synced: 0 }, remote(null, 'empty')), 'empty');
   assert.deepEqual(mergeInventory(base, local, cloud).settings, { dryDays: 40, low: 20 });
   cloud.settings.low = 30;
-  assert.throws(() => mergeInventory(base, local, cloud), /两端均修改/);
+  assert.throws(() => mergeInventory(base, local, cloud), /Both sides changed/);
 });

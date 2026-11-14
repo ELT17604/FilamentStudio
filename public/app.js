@@ -1,3 +1,4 @@
+import { t, currentLocale, languagePreference, setLanguage } from './i18n.js';
 import { openInventory, load, transact } from './inventory-store.js';
 import {
   escapeHtml,
@@ -87,15 +88,16 @@ const reel = (s) =>
   '></div>';
 const grams = (n) => (n >= 1000 ? (n / 1000).toFixed(2).replace(/\.?0+$/, '') + ' kg' : n + ' g');
 const pct = (s) => Math.round((s.remaining / s.weight) * 100);
-const date = (x) => (x ? new Date(x).toLocaleString('zh-CN', { hour12: false }) : '尚未记录');
+const date = (x) =>
+  x ? new Date(x).toLocaleString(currentLocale(), { hour12: false }) : t('尚未记录');
 function dryAge(s, withDate = false) {
   const age = dryingAge(s.lastDry);
-  if (!age) return '<span class="dry-age">尚未烘干</span>';
+  if (!age) return t('<span class="dry-age">尚未烘干</span>');
   const elapsed =
     '<strong class="dry-age dry-age--' +
     age.tone +
     '">' +
-    (age.days === 0 ? '不到 1 天' : age.days + ' 天前') +
+    (age.days === 0 ? t('不到 1 天') : age.days + t(' 天前')) +
     '</strong>';
   return withDate
     ? '<time datetime="' +
@@ -130,15 +132,21 @@ let account = null,
 let toastTimer;
 let placementWarning;
 let comparison;
-const placeName = (k) => allPlaces(state.data).find((x) => x.id === k)?.name || '未分配';
+const displayPlace = (place) =>
+  ['unopened-stock', 'vacuum', 'external'].includes(place.id) ? t(place.name) : place.name;
+const placeName = (key) => {
+  const place = allPlaces(state.data).find((entry) => entry.id === key);
+  if (!place) return t('未分配');
+  return displayPlace(place);
+};
 const locations = (value = '') =>
-  option('', '未分配', value) +
+  option('', t('未分配'), value) +
   allPlaces(state.data)
-    .map((p) => option(p.id, p.name, value))
+    .map((p) => option(p.id, displayPlace(p), value))
     .join('');
 const spool = (d, k) => {
   const s = d.spools.find((x) => x.id === k);
-  if (!s) throw Error('卷盘已不存在');
+  if (!s) throw Error(t('卷盘已不存在'));
   return s;
 };
 const name = (s) => s.name || s.material;
@@ -151,14 +159,14 @@ function toast(txt) {
 }
 function showError(e) {
   const el = $('#form-error');
-  if (panel.open && el) el.textContent = e.message;
-  else toast(e.message);
+  if (panel.open && el) el.textContent = t(e.message);
+  else toast(t(e.message));
 }
 function log(d, s, type, before = '', after = '', note = '') {
   d.events.push({ id: id(), spool: s.id, type, before, after, note, at: now() });
 }
 const key = () => account?.id || 'local';
-async function save(change, ok = '已保存') {
+async function save(change, ok = t('已保存')) {
   state = await transact(key(), (v) => {
     change(v.data);
     validate(v.data);
@@ -170,15 +178,15 @@ async function save(change, ok = '已保存') {
   render();
   toast(ok);
   if (account)
-    syncStatus(conflict ? '本机已保存，等待处理同步冲突。' : '本机已保存，等待自动同步。');
+    syncStatus(conflict ? t('本机已保存，等待处理同步冲突。') : t('本机已保存，等待自动同步。'));
   queue();
 }
 function sheet(title, body) {
   stopCamera();
   if (!panel.open) panel.showModal();
-  panel.innerHTML = sectionHeading(title, button('关闭', 'close')) + body;
+  panel.innerHTML = sectionHeading(title, button(t('关闭'), 'close')) + body;
 }
-function form(title, kind, body, key = '', label = '保存') {
+function form(title, kind, body, key = '', label = t('保存')) {
   sheet(
     title,
     '<form class="forms" data-kind="' +
@@ -188,7 +196,7 @@ function form(title, kind, body, key = '', label = '保存') {
       '">' +
       body +
       '<p class="wide alert" role="alert" id="form-error"></p><div class="wide actions">' +
-      button('取消', 'close') +
+      button(t('取消'), 'close') +
       '<button class="primary">' +
       label +
       '</button></div></form>',
@@ -205,23 +213,25 @@ function card(s) {
     ' · ' +
     escapeHtml(s.colorName || s.color) +
     '</small></div><small>' +
-    escapeHtml(s.status) +
+    escapeHtml(t(s.status)) +
     '</small></div><small>' +
     escapeHtml(placeName(s.location)) +
-    '</small><p class="dry-summary muted">上次烘干 ' +
+    t('</small><p class="dry-summary muted">上次烘干 ') +
     dryAge(s) +
-    '</p><div class="track" role="progressbar" aria-label="余量" aria-valuenow="' +
+    '</p><div class="track" role="progressbar" aria-label="' +
+    t('余量') +
+    '" aria-valuenow="' +
     pct(s) +
     '"><i style="width:' +
     pct(s) +
     '%"></i></div><div class="row"><strong>' +
     grams(s.remaining) +
     '</strong><small>' +
-    escapeHtml(s.confidence || '估算') +
+    escapeHtml(t(s.confidence || '估算')) +
     ' · ' +
     pct(s) +
     '%</small></div>' +
-    actions(button('详情', 'detail', s.id), button('调余量', 'amount', s.id)) +
+    actions(button(t('详情'), 'detail', s.id), button(t('调余量'), 'amount', s.id)) +
     '</article>'
   );
 }
@@ -233,7 +243,7 @@ function ams(dev) {
     Array.from({ length: dev.slots }, (_, i) => dev.id + '-' + (i + 1)).includes(p.id),
   );
   return (
-    '<article class="hero"><small>耗材装载 · 按 10% RH 估算 · ' +
+    t('<article class="hero"><small>耗材装载 · 按 10% RH 估算 · ') +
     slots.filter((p) => state.data.spools.some((s) => s.location === p.id)).length +
     '/' +
     dev.slots +
@@ -244,17 +254,19 @@ function ams(dev) {
       .map((p, i) => {
         const s = state.data.spools.find((x) => x.location === p.id);
         return button(
-          '<small>槽位 ' +
+          t('<small>槽位 ') +
             (i + 1) +
             '</small>' +
             reel(s) +
             '<strong>' +
-            escapeHtml(s?.material || '空槽位') +
+            escapeHtml(s?.material || t('空槽位')) +
             '</strong>' +
             (s
               ? '<meter class="slot-remaining" min="0" max="100" value="' +
                 pct(s) +
-                '" aria-label="耗材余量">' +
+                '" aria-label="' +
+                t('耗材余量') +
+                '">' +
                 pct(s) +
                 '%</meter><small class="slot-brand">' +
                 escapeHtml(s.brand) +
@@ -268,7 +280,7 @@ function ams(dev) {
       .join('') +
     '</div>' +
     (isAms2Pro(dev) && state.data.spools.some((s) => active(s) && inAms(s, dev))
-      ? '<div class="ams-actions">' + button('批量记录完全烘干', 'dry-batch', dev.id) + '</div>'
+      ? '<div class="ams-actions">' + button(t('批量记录完全烘干'), 'dry-batch', dev.id) + '</div>'
       : '') +
     '</article>'
   );
@@ -281,28 +293,28 @@ function home() {
     warnings = list.filter((s) => alertFor(s) || pct(s) <= state.data.settings.low);
   return (
     pageHeading(
-      '耗材工作室',
-      '查看卷盘、装载位置和烘干记录。',
-      button('＋ 新增耗材', 'new', '', 'primary'),
+      t('耗材工作室'),
+      t('查看卷盘、装载位置和烘干记录。'),
+      button(t('＋ 新增耗材'), 'new', '', 'primary'),
     ) +
     state.data.devices.slice(0, 1).map(ams).join('') +
     '<div class="metrics">' +
-    metric('在库卷盘', list.length) +
-    metric('剩余净重', grams(list.reduce((t, s) => t + s.remaining, 0))) +
-    metric('待关注卷盘', warnings.length) +
+    metric(t('在库卷盘'), list.length) +
+    metric(t('剩余净重'), grams(list.reduce((t, s) => t + s.remaining, 0))) +
+    metric(t('待关注卷盘'), warnings.length) +
     '</div>' +
     actions(
-      button('库存盘点', 'audit'),
-      button('提醒中心', 'alerts'),
-      button('库存总结', 'summary'),
+      button(t('库存盘点'), 'audit'),
+      button(t('提醒中心'), 'alerts'),
+      button(t('库存总结'), 'summary'),
     ) +
-    sectionHeading('最近录入', '<a href="#stock">查看库存 →</a>') +
+    sectionHeading(t('最近录入'), t('<a href="#stock">查看库存 →</a>')) +
     (list.length
       ? grid(list.slice().reverse().slice(0, 3).map(card))
       : emptyState(
-          '还没有库存',
-          '新增第一卷耗材，或从设置中恢复 JSON 备份。',
-          button('新增第一卷', 'new', '', 'primary'),
+          t('还没有库存'),
+          t('新增第一卷耗材，或从设置中恢复 JSON 备份。'),
+          button(t('新增第一卷'), 'new', '', 'primary'),
         ))
   );
 }
@@ -320,33 +332,33 @@ function stock() {
   );
   return (
     pageHeading(
-      '库存',
-      '当前筛选 ' + list.length + ' 卷',
-      button('＋ 新增', 'new', '', 'primary'),
+      t('库存'),
+      t('当前筛选 ') + list.length + t(' 卷'),
+      button(t('＋ 新增'), 'new', '', 'primary'),
     ) +
     '<div class="filters">' +
-    field('搜索', 'search', query, 'search', 'placeholder="品牌、材料或颜色"') +
+    field(t('搜索'), 'search', query, 'search', 'placeholder="品牌、材料或颜色"') +
     select(
-      '材料大类',
+      t('材料大类'),
       'filter-material',
-      option('', '全部材料', material) +
-        options([...new Set(state.data.spools.map((s) => s.family))], material),
+      option('', t('全部材料'), material) +
+        options([...new Set(state.data.spools.map((s) => s.family))], material, t),
     ) +
     select(
-      '状态',
+      t('状态'),
       'filter-status',
-      option('', '当前卷盘', stockStatus) + options(statusList, stockStatus),
+      option('', t('当前卷盘'), stockStatus) + options(statusList, stockStatus, t),
     ) +
     select(
-      '位置',
+      t('位置'),
       'filter-place',
-      option('', '所有位置', selectedPlace) +
+      option('', t('所有位置'), selectedPlace) +
         allPlaces(state.data)
-          .map((p) => option(p.id, p.name, selectedPlace))
+          .map((p) => option(p.id, displayPlace(p), selectedPlace))
           .join(''),
     ) +
     '</div><div id="stock-results">' +
-    (list.length ? grid(list.slice().reverse().map(card)) : emptyState('暂无符合条件的卷盘')) +
+    (list.length ? grid(list.slice().reverse().map(card)) : emptyState(t('暂无符合条件的卷盘'))) +
     '</div>'
   );
 }
@@ -354,12 +366,12 @@ function places() {
   const places = storagePlaces(state.data);
   return (
     pageHeading(
-      '位置',
-      '查看 AMS 槽位、外挂料架和储存区。',
-      actions(button('新增 AMS', 'device'), button('新增位置', 'place', '', 'primary')),
+      t('位置'),
+      t('查看 AMS 槽位、外挂料架和储存区。'),
+      actions(button(t('新增 AMS'), 'device'), button(t('新增位置'), 'place', '', 'primary')),
     ) +
     state.data.devices.map(ams).join('') +
-    sectionHeading('存储位置') +
+    sectionHeading(t('存储位置')) +
     '<div class="stack storage-list">' +
     places
       .map((p, index) => {
@@ -373,7 +385,7 @@ function places() {
           '" aria-label="' +
           label +
           ' ' +
-          escapeHtml(p.name) +
+          escapeHtml(displayPlace(p)) +
           '" ' +
           (disabled ? 'disabled' : '') +
           '>' +
@@ -385,17 +397,17 @@ function places() {
           '"><div class="place-icon">' +
           draw(isUnopened ? 'unopened' : 'storage') +
           '</div><div class="storage-text"><h3>' +
-          escapeHtml(p.name) +
+          escapeHtml(displayPlace(p)) +
           '</h3><small>' +
           state.data.spools.filter((s) => s.location === p.id).length +
-          ' 卷 · ' +
-          (p.capacity ? '容量 ' + p.capacity + ' 卷' : '不限容量') +
-          (rh !== null ? ' · 按 ' + rh + '% RH 估算' : '') +
+          t(' 卷 · ') +
+          (p.capacity ? t('容量 ') + p.capacity + t(' 卷') : t('不限容量')) +
+          (rh !== null ? t(' · 按 ') + rh + t('% RH 估算') : '') +
           '</small></div>' +
           '<div class="actions storage-controls">' +
-          button('查看卷盘', 'filter-place', p.id) +
-          order('上移', '↑', 'place-up', index === 0) +
-          order('下移', '↓', 'place-down', index === places.length - 1) +
+          button(t('查看卷盘'), 'filter-place', p.id) +
+          order(t('上移'), '↑', 'place-up', index === 0) +
+          order(t('下移'), '↓', 'place-down', index === places.length - 1) +
           '</div></section>'
         );
       })
@@ -404,7 +416,7 @@ function places() {
   );
 }
 async function reorderPlace(key, offset) {
-  await save((data) => reorderStoragePlace(data, key, offset), '已更新位置顺序');
+  await save((data) => reorderStoragePlace(data, key, offset), t('已更新位置顺序'));
   const controls = Array.from(
     main.querySelectorAll('[data-action="place-up"],[data-action="place-down"]'),
   ).filter((button) => button.dataset.key === key && !button.disabled);
@@ -419,19 +431,16 @@ function summary() {
   const used = state.data.events.filter(
     (x) => x.type === 'print' && Date.now() - Date.parse(x.at) < 30 * 86400000,
   );
-  return (
-    '当前在库 ' +
-    s.length +
-    ' 卷，净余量 ' +
-    grams(sum) +
-    '。\n未开封 ' +
-    s.filter((x) => x.status === '未开封').length +
-    ' 卷。\n近 30 天打印消耗 ' +
-    (used.length ? grams(used.reduce((n, e) => n + e.before - e.after, 0)) : '数据不足') +
-    '。\n待关注烘干 ' +
-    s.filter((x) => alertFor(x)).length +
-    ' 卷。'
-  );
+  return [
+    t('当前在库 {count} 卷，净余量 {weight}。', { count: s.length, weight: grams(sum) }),
+    t('未开封 {count} 卷。', { count: s.filter((spool) => spool.status === '未开封').length }),
+    t('近 30 天打印消耗 {amount}。', {
+      amount: used.length
+        ? grams(used.reduce((total, event) => total + event.before - event.after, 0))
+        : t('数据不足'),
+    }),
+    t('待关注烘干 {count} 卷。', { count: s.filter(alertFor).length }),
+  ].join('\n');
 }
 function stats() {
   const list = activeRolls(),
@@ -445,14 +454,14 @@ function stats() {
     );
   return (
     pageHeading(
-      '库存统计',
-      '按本机卷盘和历史记录计算。',
-      button('生成总结', 'summary', '', 'primary'),
+      t('库存统计'),
+      t('按本机卷盘和历史记录计算。'),
+      button(t('生成总结'), 'summary', '', 'primary'),
     ) +
     grid(
       [
         [
-          '材料分布',
+          t('材料分布'),
           table
             .map(
               ([k, v]) =>
@@ -460,13 +469,13 @@ function stats() {
                 escapeHtml(k) +
                 '</strong><small>' +
                 v[0] +
-                ' 卷 · ' +
+                t(' 卷 · ') +
                 grams(v[1]) +
                 '</small></div>',
             )
-            .join('') || '<p class="muted">暂无数据</p>',
+            .join('') || t('<p class="muted">暂无数据</p>'),
         ],
-        ['库存概况', '<p style="white-space:pre-line">' + escapeHtml(summary()) + '</p>'],
+        [t('库存概况'), '<p style="white-space:pre-line">' + escapeHtml(summary()) + '</p>'],
       ].map(
         ([h2, contents]) =>
           '<article class="card stack"><h2>' + h2 + '</h2>' + contents + '</article>',
@@ -476,50 +485,76 @@ function stats() {
 }
 function settings() {
   return (
-    pageHeading('设置', '管理云同步、备份和应用安装。') +
+    pageHeading(t('设置'), t('管理云同步、备份和应用安装。')) +
     grid([
-      '<section class="card stack"><h2>云同步' +
+      '<section class="card stack"><h2>' +
+        t('语言') +
+        '</h2><p class="muted">' +
+        t('仅保存在此设备。') +
+        '</p>' +
+        select(
+          t('语言'),
+          'language',
+          [
+            ['auto', t('跟随系统')],
+            ['zh-CN', '简体中文'],
+            ['en', 'English'],
+            ['ja', '日本語'],
+          ]
+            .map(([value, label]) => option(value, label, languagePreference()))
+            .join(''),
+        ) +
+        '</section>',
+      t('<section class="card stack"><h2>云同步') +
         (account ? ' · ' + escapeHtml(account.name) : '') +
         '</h2><p class="muted" id="sync-state">' +
-        escapeHtml(message || '登录后可在设备之间同步库存。') +
+        escapeHtml(t(message) || t('登录后可在设备之间同步库存。')) +
         '</p>' +
         actions(
-          button('登录 / 更新会话', 'login', '', 'primary'),
+          button(t('登录 / 更新会话'), 'login', '', 'primary'),
           ...(account
             ? [
-                button('手动同步', 'sync'),
-                button('导入本地库存', 'adopt'),
-                button('退出账号', 'logout'),
+                button(t('手动同步'), 'sync'),
+                button(t('导入本地库存'), 'adopt'),
+                button(t('退出账号'), 'logout'),
               ]
             : []),
-          ...(conflict ? [button('处理冲突', 'conflict')] : []),
+          ...(conflict ? [button(t('处理冲突'), 'conflict')] : []),
         ) +
         '</section>',
-      '<section class="card stack"><h2>备份与恢复</h2><p class="muted">完整 JSON 包含卷盘、位置、设备及历史。</p>' +
+      t(
+        '<section class="card stack"><h2>备份与恢复</h2><p class="muted">完整 JSON 包含卷盘、位置、设备及历史。</p>',
+      ) +
         actions(
-          button('导出 JSON', 'backup', '', 'primary'),
-          button('恢复备份', 'restore'),
-          button('导出库存 CSV', 'csv'),
-          ...(state.recovery ? [button('导出替换前快照', 'recovery')] : []),
+          button(t('导出 JSON'), 'backup', '', 'primary'),
+          button(t('恢复备份'), 'restore'),
+          button(t('导出库存 CSV'), 'csv'),
+          ...(state.recovery ? [button(t('导出替换前快照'), 'recovery')] : []),
         ) +
         '</section>',
-      '<section class="card stack"><h2>设备与安装</h2><p class="muted">业务数据保存在 IndexedDB。' +
-        (navigator.serviceWorker?.controller ? '离线资源已启用。' : '离线资源尚未就绪。') +
+      t(
+        '<section class="card stack"><h2>设备与安装</h2><p class="muted">业务数据保存在 IndexedDB。',
+      ) +
+        (navigator.serviceWorker?.controller ? t('离线资源已启用。') : t('离线资源尚未就绪。')) +
         '</p>' +
-        actions(button('安装到主屏幕', 'install'), button('请求持久存储', 'persist')) +
+        actions(button(t('安装到主屏幕'), 'install'), button(t('请求持久存储'), 'persist')) +
         '</section>',
-      '<section class="card stack"><h2>提醒规则</h2><p class="muted">低余量 ≤ ' +
+      t('<section class="card stack"><h2>提醒规则</h2><p class="muted">低余量 ≤ ') +
         state.data.settings.low +
-        '% · 普通存储烘干检查 ' +
+        t('% · 普通存储烘干检查 ') +
         state.data.settings.dryDays +
-        ' 天</p>' +
-        actions(button('编辑规则', 'rules'), button('提醒中心', 'alerts')) +
+        t(' 天</p>') +
+        actions(button(t('编辑规则'), 'rules'), button(t('提醒中心'), 'alerts')) +
         '<a href="https://cdn1.bambulab.com/filament/filament-guide/bcv8wbl4hj/filament-guide-en.pdf" target="_blank" rel="noreferrer">Bambu Lab Filament Guide ↗</a></section>',
     ])
   );
 }
 function render() {
   if (!state) return;
+  document.documentElement.lang = currentLocale();
+  $('#brand-description').textContent = t('耗材工作室');
+  $('#local-description').textContent = '● ' + t('设备本地存储');
+  $('#nav').setAttribute('aria-label', t('主导航'));
   const [route, ref] = location.hash.slice(1).split('/');
   const p = route === 'guide' ? 'stock' : Object.hasOwn(labels, route) ? route : 'home';
   $('#nav').innerHTML = Object.entries(labels)
@@ -532,7 +567,7 @@ function render() {
         '><span aria-hidden="true">' +
         draw(icon) +
         '</span>' +
-        title +
+        t(title) +
         '</a>',
     )
     .join('');
@@ -540,12 +575,12 @@ function render() {
   main.innerHTML = selected ? guidePage(selected) : { home, stock, places, stats, settings }[p]();
 }
 const optionsDamp = (value) =>
-  option('no', '未标记', value ? 'yes' : 'no') +
-  option('yes', '发现受潮迹象', value ? 'yes' : 'no');
+  option('no', t('未标记'), value ? 'yes' : 'no') +
+  option('yes', t('发现受潮迹象'), value ? 'yes' : 'no');
 
 const customChoice = '__filament_custom__';
 const choiceOptions = (list, current) =>
-  options(list, current) + option(customChoice, '＋ 手动输入', current);
+  options(list, current, t) + option(customChoice, t('＋ 手动输入'), current);
 const materialList = (data, family) => [
   ...new Set([
     ...(families[family] || []),
@@ -556,7 +591,7 @@ const materialList = (data, family) => [
 ];
 const editableChoice = (title, key, list, value) =>
   select(title, key, choiceOptions(list, value)) +
-  '<label class="wide" hidden>输入' +
+  t('<label class="wide" hidden>输入') +
   title +
   '<input name="' +
   key +
@@ -590,65 +625,69 @@ function edit(s, copy = false) {
   ];
   const dict = [...new Set([...materialList(state.data, x.family), x.material])];
   form(
-    s && !copy ? '编辑耗材' : '新增耗材',
+    s && !copy ? t('编辑耗材') : t('新增耗材'),
     'spool',
-    editableChoice('品牌', 'brand', brands, x.brand) +
-      select('材料大类', 'family', options(Object.keys(families), x.family)) +
-      editableChoice('材料系列', 'material', dict, x.material) +
-      field('颜色名称', 'colorName', x.colorName) +
-      field('颜色', 'color', x.color, 'color') +
-      field('HEX 色值', 'hex', x.color, 'text', 'pattern="#[0-9a-fA-F]{6}" required') +
+    editableChoice(t('品牌'), 'brand', brands, x.brand) +
+      select(t('材料大类'), 'family', options(Object.keys(families), x.family, t)) +
+      editableChoice(t('材料系列'), 'material', dict, x.material) +
+      field(t('颜色名称'), 'colorName', x.colorName) +
+      field(t('颜色'), 'color', x.color, 'color') +
+      field(t('HEX 色值'), 'hex', x.color, 'text', 'pattern="#[0-9a-fA-F]{6}" required') +
       '<div class="wide">' +
-      actions(button('摄像头取色', 'camera'), button('相册取色', 'album')) +
+      actions(button(t('摄像头取色'), 'camera'), button(t('相册取色'), 'album')) +
       '<input id="album" type="file" accept="image/*" hidden><div id="photo-preview"></div></div>' +
-      field('初始净重量（g）', 'weight', x.weight, 'number', 'min="1" max="100000" required') +
+      field(t('初始净重量（g）'), 'weight', x.weight, 'number', 'min="1" max="100000" required') +
       field(
-        '购买日期',
+        t('购买日期'),
         'bought',
         copy ? formatDate() : x.bought,
         'date',
         'max="' + formatDate() + '" required',
       ) +
-      select('位置', 'location', locations(!s || copy ? unopenedId : x.location)) +
-      (s && !copy ? '' : field('购买卷数', 'qty', 1, 'number', 'min="1" max="100" required')) +
-      '<details class="wide"><summary>规格、采购与标签</summary><div class="forms">' +
-      field('卷盘名称', 'name', x.name) +
+      select(t('位置'), 'location', locations(!s || copy ? unopenedId : x.location)) +
+      (s && !copy ? '' : field(t('购买卷数'), 'qty', 1, 'number', 'min="1" max="100" required')) +
+      t('<details class="wide"><summary>规格、采购与标签</summary><div class="forms">') +
+      field(t('卷盘名称'), 'name', x.name) +
       field('SKU', 'sku', x.sku) +
-      field('批次', 'lot', x.lot) +
-      field('开封日期', 'opened', copy ? '' : x.opened, 'date', 'max="' + formatDate() + '"') +
-      field('空盘重量（g）', 'tare', x.tare, 'number', 'min="0"') +
-      field('单卷价格（¥）', 'price', x.price, 'number', 'min="0" step=".01"') +
-      select('状态', 'status', options(statusList.slice(0, 5), copy ? '未开封' : x.status)) +
+      field(t('批次'), 'lot', x.lot) +
+      field(t('开封日期'), 'opened', copy ? '' : x.opened, 'date', 'max="' + formatDate() + '"') +
+      field(t('空盘重量（g）'), 'tare', x.tare, 'number', 'min="0"') +
+      field(t('单卷价格（¥）'), 'price', x.price, 'number', 'min="0" step=".01"') +
+      select(t('状态'), 'status', options(statusList.slice(0, 5), copy ? '未开封' : x.status, t)) +
       select(
-        '标签',
+        t('标签'),
         'rfid',
-        options(['未知', '无标签', 'Bambu 官方 RFID', '第三方 RFID/NFC', '第三方二维码'], x.rfid),
+        options(
+          ['未知', '无标签', 'Bambu 官方 RFID', '第三方 RFID/NFC', '第三方二维码'],
+          x.rfid,
+          t,
+        ),
       ) +
-      field('标签名称 / UID', 'label', x.label) +
-      field('备注', 'note', x.note) +
-      select('受潮迹象', 'damp', optionsDamp(x.damp)) +
+      field(t('标签名称 / UID'), 'label', x.label) +
+      field(t('备注'), 'note', x.note) +
+      select(t('受潮迹象'), 'damp', optionsDamp(x.damp)) +
       '</div></details>',
     s && !copy ? s.id : '',
-    '保存卷盘',
+    t('保存卷盘'),
   );
 }
 function detailMetadata(s) {
   const rows = [
-    ['卷盘名称', s.name],
+    [t('卷盘名称'), s.name],
     ['SKU', s.sku],
-    ['批次', s.lot],
-    ['初始净重量', grams(s.weight)],
-    ['空盘重量', s.tare != null && s.tare !== '' ? s.tare + ' g' : ''],
-    ['购买日期', s.bought],
-    ['开封日期', s.opened],
-    ['单卷价格', s.price != null && s.price !== '' ? '¥' + s.price : ''],
-    ['标签类型', s.rfid === '未知' ? '' : s.rfid],
-    ['标签名称 / UID', s.label],
-    ['受潮迹象', s.damp ? '已标记' : ''],
+    [t('批次'), s.lot],
+    [t('初始净重量'), grams(s.weight)],
+    [t('空盘重量'), s.tare != null && s.tare !== '' ? s.tare + ' g' : ''],
+    [t('购买日期'), s.bought],
+    [t('开封日期'), s.opened],
+    [t('单卷价格'), s.price != null && s.price !== '' ? '¥' + s.price : ''],
+    [t('标签类型'), s.rfid === '未知' ? '' : t(s.rfid)],
+    [t('标签名称 / UID'), s.label],
+    [t('受潮迹象'), s.damp ? t('已标记') : ''],
   ].filter(([, value]) => String(value ?? '').trim());
   if (!rows.length && !s.note) return '';
   return (
-    '<section class="detail-metadata stack"><h3>规格、采购与标签</h3><dl>' +
+    t('<section class="detail-metadata stack"><h3>规格、采购与标签</h3><dl>') +
     rows
       .map(
         ([label, value]) => '<div><dt>' + label + '</dt><dd>' + escapeHtml(value) + '</dd></div>',
@@ -656,7 +695,7 @@ function detailMetadata(s) {
       .join('') +
     '</dl>' +
     (s.note
-      ? '<div class="detail-note"><small>备注</small><p>' + escapeHtml(s.note) + '</p></div>'
+      ? t('<div class="detail-note"><small>备注</small><p>') + escapeHtml(s.note) + '</p></div>'
       : '') +
     '</section>'
   );
@@ -678,33 +717,35 @@ function detail(s) {
       '</h3><p class="muted">' +
       escapeHtml(s.colorName || s.color) +
       ' · ' +
-      escapeHtml(s.status) +
+      escapeHtml(t(s.status)) +
       '</p></div><strong>' +
       grams(s.remaining) +
       '</strong></div><p>' +
       escapeHtml(placeName(s.location)) +
-      '</p><p class="muted dry-summary">上次烘干 ' +
+      t('</p><p class="muted dry-summary">上次烘干 ') +
       dryAge(s, true) +
-      ' · 上次盘点 ' +
+      t(' · 上次盘点 ') +
       escapeHtml(date(s.lastAudit)) +
       '</p>' +
       (current
-        ? actions(button('恢复在库', 'recover', s.id, 'primary'))
+        ? actions(button(t('恢复在库'), 'recover', s.id, 'primary'))
         : actions(
-            button('调余量', 'amount', s.id, 'primary'),
-            button('移动 / 交换', 'move', s.id),
-            button('记烘干', 'dry', s.id),
-            button('编辑', 'edit', s.id),
-            button('复制', 'duplicate', s.id),
-            button('归档', 'archive', s.id),
-            button('移到回收站', 'trash', s.id),
+            button(t('调余量'), 'amount', s.id, 'primary'),
+            button(t('移动 / 交换'), 'move', s.id),
+            button(t('记烘干'), 'dry', s.id),
+            button(t('编辑'), 'edit', s.id),
+            button(t('复制'), 'duplicate', s.id),
+            button(t('归档'), 'archive', s.id),
+            button(t('移到回收站'), 'trash', s.id),
           )) +
       '<a class="guide-link" href="#guide/' +
       encodeURIComponent(s.id) +
-      '">材料指南与烘干参数 <span aria-hidden="true">↗</span></a>' +
+      '">' +
+      t('材料指南与烘干参数') +
+      ' <span aria-hidden="true">↗</span></a>' +
       (alertFor(s) ? '<p class="alert">' + escapeHtml(alertFor(s)) + '</p>' : '') +
       detailMetadata(s) +
-      '<details><summary>操作历史 · ' +
+      t('<details><summary>操作历史 · ') +
       rows.length +
       '</summary>' +
       rows
@@ -712,7 +753,7 @@ function detail(s) {
         .map(
           (e) =>
             '<div class="item"><strong>' +
-            escapeHtml(events[e.type] || e.type) +
+            escapeHtml(t(events[e.type] || e.type)) +
             '</strong><p class="muted">' +
             escapeHtml(date(e.at)) +
             (typeof e.before === 'number' ? ' · ' + e.before + ' g → ' + e.after + ' g' : '') +
@@ -731,12 +772,12 @@ const sourceLinks = (keys) =>
         '<a class="guide-link" target="_blank" rel="noopener noreferrer" href="' +
         escapeHtml(url) +
         '">' +
-        escapeHtml(label) +
+        escapeHtml(t(label)) +
         ' ↗</a>'
       );
     }),
   );
-const withUnit = (value, unit) => (value == null ? '未发布' : escapeHtml(value) + ' ' + unit);
+const withUnit = (value, unit) => (value == null ? t('未发布') : escapeHtml(value) + ' ' + unit);
 function guidePage(s) {
   const g = materialGuide(s);
   const [level, health, control, airSources] = g.air;
@@ -745,56 +786,56 @@ function guidePage(s) {
     : g.brandCategory
       ? g.name
       : g.sources.length
-        ? '对照条目 · ' + g.name
-        : '暂无该系列的已收录参数';
+        ? t('对照条目 · ') + g.name
+        : t('暂无该系列的已收录参数');
   const printFields = [
-    ['喷嘴温度', withUnit(g.nozzleTemp, '°C')],
-    ['打印腔温', escapeHtml(g.chamber)],
-    ['打印工艺封箱', escapeHtml(g.enclosure)],
-    ['AMS 供料', g.feed == null ? '未列' : g.feed ? '支持' : '不支持'],
+    [t('喷嘴温度'), withUnit(g.nozzleTemp, '°C')],
+    [t('打印腔温'), escapeHtml(t(g.chamber))],
+    [t('打印工艺封箱'), escapeHtml(t(g.enclosure))],
+    [t('AMS 供料'), g.feed == null ? t('未列') : g.feed ? t('支持') : t('不支持')],
   ];
   return (
-    '<a class="back-link" href="#stock">← 返回库存</a>' +
+    t('<a class="back-link" href="#stock">← 返回库存</a>') +
     pageHeading(
-      escapeHtml(s.material) + ' 烘干打印参考',
-      escapeHtml(s.brand) + ' · ' + escapeHtml(profileLabel),
+      escapeHtml(s.material) + t(' 烘干打印参考'),
+      escapeHtml(s.brand) + ' · ' + escapeHtml(t(profileLabel)),
       actions(
-        button('卷盘详情', 'guide-details', s.id),
-        button('记录烘干', 'dry', s.id, 'primary'),
+        button(t('卷盘详情'), 'guide-details', s.id),
+        button(t('记录烘干'), 'dry', s.id, 'primary'),
       ),
     ) +
     '<div class="metrics">' +
-    metric(g.temperature ? g.method : '烘干温度', withUnit(g.temperature, '°C')) +
-    metric('烘干时间', withUnit(g.hours, g.durationUnit || '小时')) +
-    metric('打印前烘干', escapeHtml(g.dry)) +
+    metric(g.temperature ? t(g.method) : t('烘干温度'), withUnit(g.temperature, '°C')) +
+    metric(t('烘干时间'), withUnit(g.hours, t(g.durationUnit || '小时'))) +
+    metric(t('打印前烘干'), escapeHtml(t(g.dry))) +
     '</div>' +
     grid([
-      '<article class="card stack"><h2>打印参数</h2><dl class="guide-facts">' +
+      t('<article class="card stack"><h2>打印参数</h2><dl class="guide-facts">') +
         printFields
           .map(([key, value]) => '<div><dt>' + key + '</dt><dd>' + value + '</dd></div>')
           .join('') +
         '</dl></article>',
-      '<article class="card stack"><h2>健康与空气排放</h2><p><strong>排放关注度 · ' +
-        escapeHtml(level) +
+      t('<article class="card stack"><h2>健康与空气排放</h2><p><strong>排放关注度 · ') +
+        escapeHtml(t(level)) +
         '</strong></p><p>' +
-        escapeHtml(health) +
+        escapeHtml(t(health)) +
         '</p><p>' +
-        escapeHtml(control) +
+        escapeHtml(t(control)) +
         '</p></article>',
     ]) +
     (g.ams
-      ? '<article class="card stack"><h2>AMS 2 Pro / AMS HT 烘干</h2><p>' +
-        escapeHtml(g.ams) +
+      ? t('<article class="card stack"><h2>AMS 2 Pro / AMS HT 烘干</h2><p>') +
+        escapeHtml(t(g.ams)) +
         '</p></article>'
       : g.temperature && parseInt(g.temperature, 10) > 65
-        ? '<article class="card stack"><h2>AMS 2 Pro 烘干</h2><p>最高 65 °C · 低于该条目的 ' +
+        ? t('<article class="card stack"><h2>AMS 2 Pro 烘干</h2><p>最高 65 °C · 低于该条目的 ') +
           withUnit(g.temperature, '°C') +
-          ' 烘干条件。</p></article>'
+          t(' 烘干条件。</p></article>')
         : '') +
-    '<article class="card stack guide-sources"><h2>烘干记录与资料</h2><p>上次烘干 ' +
+    t('<article class="card stack guide-sources"><h2>烘干记录与资料</h2><p>上次烘干 ') +
     escapeHtml(date(s.lastDry)) +
     '</p><p>' +
-    escapeHtml(alertFor(s) || '当前无烘干提醒。') +
+    escapeHtml(alertFor(s) || t('当前无烘干提醒。')) +
     '</p>' +
     sourceLinks([...g.sources, ...airSources]) +
     '</article>'
@@ -804,41 +845,41 @@ function drySheet(s) {
   const g = materialGuide(s);
   const reference = g.temperature
     ? '<p class="muted">' +
-      escapeHtml(g.name) +
+      escapeHtml(t(g.name)) +
       ' · ' +
-      escapeHtml(g.method) +
+      escapeHtml(t(g.method)) +
       ' ' +
       withUnit(g.temperature, '°C') +
       ' / ' +
-      withUnit(g.hours, g.durationUnit || '小时') +
-      ' · 打印前烘干：' +
-      escapeHtml(g.dry) +
+      withUnit(g.hours, t(g.durationUnit || '小时')) +
+      t(' · 打印前烘干：') +
+      escapeHtml(t(g.dry)) +
       '</p>'
-    : '<p class="muted">此系列未收录烘干参数。</p>';
+    : t('<p class="muted">此系列未收录烘干参数。</p>');
   const fixed = g.official && /^\d+$/.test(g.temperature) && /^\d+$/.test(g.hours);
   form(
-    '记录烘干完成',
+    t('记录烘干完成'),
     'dry',
     '<div class="wide stack">' +
       reference +
       (fixed
-        ? actions(button('套用 ' + escapeHtml(g.method) + ' 参数', 'guide-prefill', s.id))
+        ? actions(button(t('套用 ') + escapeHtml(t(g.method)) + t(' 参数'), 'guide-prefill', s.id))
         : '') +
-      '<p id="dry-device-note" class="muted" hidden>AMS 2 Pro 最高 65 °C。' +
-      (g.ams ? ' ' + escapeHtml(g.ams) : '') +
+      t('<p id="dry-device-note" class="muted" hidden>AMS 2 Pro 最高 65 °C。') +
+      (g.ams ? ' ' + escapeHtml(t(g.ams)) : '') +
       '</p></div>' +
       deviceChoice(s) +
       '<div class="wide">' +
-      button('一键记录完全烘干', 'dry-now', s.id, 'primary') +
+      button(t('一键记录完全烘干'), 'dry-now', s.id, 'primary') +
       '</div>' +
-      '<details class="wide"><summary>填写烘干参数</summary><div class="forms">' +
-      field('完成时间', 'at', localTime(), 'datetime-local', 'required') +
-      field('时长（分钟）', 'minutes', '', 'number', 'min="1"') +
-      field('实际设定温度（°C）', 'temperature', '', 'number', 'min="0"') +
-      field('备注', 'note') +
+      t('<details class="wide"><summary>填写烘干参数</summary><div class="forms">') +
+      field(t('完成时间'), 'at', localTime(), 'datetime-local', 'required') +
+      field(t('时长（分钟）'), 'minutes', '', 'number', 'min="1"') +
+      field(t('实际设定温度（°C）'), 'temperature', '', 'number', 'min="0"') +
+      field(t('备注'), 'note') +
       '</div></details>',
     s.id,
-    '保存参数记录',
+    t('保存参数记录'),
   );
   $('#dry-device-note').hidden = !/ams\s*2\s*pro/i.test(dryDevice(panel.querySelector('form')));
 }
@@ -848,7 +889,7 @@ function deviceChoice(s) {
     state.data.settings.lastDryer ||
     'AMS 2 Pro';
   return editableChoice(
-    '烘干设备',
+    t('烘干设备'),
     'dryer',
     [
       ...new Set([
@@ -867,7 +908,7 @@ function dryDevice(form) {
   return (device.value === customChoice ? form.elements.dryerCustom.value : device.value).trim();
 }
 function recordDry(d, s, at, device, parameters = [], complete = false) {
-  if (!active(s)) throw Error('卷盘已不在库存');
+  if (!active(s)) throw Error(t('卷盘已不在库存'));
   if (!s.lastDry || s.lastDry <= at) {
     s.lastDry = at;
     s.damp = false;
@@ -888,11 +929,11 @@ function dryBatch(dev) {
     .filter((s) => active(s) && inAms(s, dev))
     .sort((a, b) => a.location.localeCompare(b.location));
   form(
-    '批量记录完全烘干',
+    t('批量记录完全烘干'),
     'dry-batch',
     '<p class="wide muted">' +
       escapeHtml(dev.name) +
-      ' · 选择本次已烘干的槽位</p>' +
+      t(' · 选择本次已烘干的槽位</p>') +
       rolls
         .map(
           (s) =>
@@ -908,53 +949,53 @@ function dryBatch(dev) {
         )
         .join(''),
     dev.id,
-    '记录选中的卷盘',
+    t('记录选中的卷盘'),
   );
 }
 function amount(s) {
   form(
-    '调整 ' + escapeHtml(name(s)) + ' 余量',
+    t('调整 ') + escapeHtml(name(s)) + t(' 余量'),
     'amount',
     '<div class="wide actions">' +
       [100, 75, 50, 25, 10, 0]
         .map((p) => button(p + '%', 'preset', Math.round((s.weight * p) / 100)))
         .join('') +
       '</div>' +
-      field('余量滑块', 'slider', s.remaining, 'range', 'min="0" max="' + s.weight + '"') +
+      field(t('余量滑块'), 'slider', s.remaining, 'range', 'min="0" max="' + s.weight + '"') +
       field(
-        '净余量（g）',
+        t('净余量（g）'),
         'grams',
         s.remaining,
         'number',
         'min="0" max="' + s.weight + '" required',
       ) +
-      select('确定方式', 'confidence', options(['估算', '称重'], s.confidence)) +
+      select(t('确定方式'), 'confidence', options(['估算', '称重'], s.confidence, t)) +
       select(
-        '原因',
+        t('原因'),
         'reason',
         [
-          ['adjust', '手动调整'],
-          ['print', '打印消耗'],
-          ['loss', '损耗'],
-          ['audit', '盘点校正'],
+          ['adjust', t('手动调整')],
+          ['print', t('打印消耗')],
+          ['loss', t('损耗')],
+          ['audit', t('盘点校正')],
         ]
           .map(([k, v]) => option(k, v))
           .join(''),
       ) +
-      field('含盘总重（可选 g）', 'gross', '', 'number', 'min="0"') +
-      field('空盘重量（g）', 'tare', s.tare, 'number', 'min="0"') +
-      field('备注', 'note'),
+      field(t('含盘总重（可选 g）'), 'gross', '', 'number', 'min="0"') +
+      field(t('空盘重量（g）'), 'tare', s.tare, 'number', 'min="0"') +
+      field(t('备注'), 'note'),
     s.id,
   );
 }
 function moveForm(s) {
   form(
-    '移动 ' + escapeHtml(name(s)),
+    t('移动 ') + escapeHtml(name(s)),
     'move',
-    select('目标位置', 'location', locations(s.location)) +
-      select('目标单卷槽位被占用', 'swap', options(['停止并提示', '交换位置'])),
+    select(t('目标位置'), 'location', locations(s.location)) +
+      select(t('目标单卷槽位被占用'), 'swap', options(['停止并提示', '交换位置'], undefined, t)),
     s.id,
-    '确认移动',
+    t('确认移动'),
   );
 }
 class ExternalPlacementWarning extends Error {}
@@ -964,10 +1005,10 @@ function move(d, s, to, swap = false, allowExternal = false) {
 
   if (s.location === to) return;
   const p = allPlaces(d).find((x) => x.id === to);
-  if (to && !p) throw Error('位置已不存在');
+  if (to && !p) throw Error(t('位置已不存在'));
   const other = p?.capacity === 1 && d.spools.find((x) => x.id !== s.id && x.location === to);
   if (other) {
-    if (!swap) throw Error('目标槽位已占用，需明确选择交换');
+    if (!swap) throw Error(t('目标槽位已占用，需明确选择交换'));
     if (s.location === 'external' && moistureSensitive(other) && !allowExternal)
       throw new ExternalPlacementWarning();
     log(d, other, 'move', other.location, s.location);
@@ -1050,7 +1091,7 @@ async function api(path, method = 'GET', data, headers = {}) {
   });
   const json = await r.json();
   if (!r.ok)
-    throw Object.assign(Error(json.error), {
+    throw Object.assign(Error(t(json.error)), {
       status: r.status,
       retry: +r.headers.get('Retry-After') || 0,
     });
@@ -1087,7 +1128,7 @@ async function acknowledge(
   state = await transact(k, (v) => {
     if (replace && v.revision !== local.revision) {
       if (committed) return { ...v, pending: null, needsReview: true };
-      throw Error('本机库存已变更，请重新同步');
+      throw Error(t('本机库存已变更，请重新同步'));
     }
     const revision = replace ? v.revision + 1 : v.revision;
     return {
@@ -1109,7 +1150,7 @@ async function push(k, local, remote, data, replace = false) {
       ? local.pending.id
       : id();
   await transact(k, (v) => {
-    if (v.revision !== local.revision) throw Error('本机库存已变更，请重新同步');
+    if (v.revision !== local.revision) throw Error(t('本机库存已变更，请重新同步'));
     return {
       ...v,
       pending: { id: op, localRevision: local.revision, data: structuredClone(data), replace },
@@ -1120,7 +1161,7 @@ async function push(k, local, remote, data, replace = false) {
     'If-Match': remote.tag,
     'X-Operation-Id': op,
   });
-  if (!result.tag) throw Error('云端未返回写入版本，请重试同步');
+  if (!result.tag) throw Error(t('云端未返回写入版本，请重试同步'));
   await acknowledge(k, local, result, data, replace, true);
 }
 function syncedMessage() {
@@ -1129,17 +1170,17 @@ function syncedMessage() {
   render();
   syncStatus(
     state.needsReview
-      ? '本机在同步期间有新编辑，等待重新比较。'
+      ? t('本机在同步期间有新编辑，等待重新比较。')
       : state.revision === state.synced
-        ? '已同步 · ' + new Date().toLocaleTimeString('zh-CN')
-        : '本机有新编辑，等待下一次自动同步。',
+        ? t('已同步 · ') + new Date().toLocaleTimeString(currentLocale())
+        : t('本机有新编辑，等待下一次自动同步。'),
   );
   if (state.needsReview || state.revision !== state.synced) queue();
 }
 async function sync(manual = false) {
   if (!account || busy || (!manual && (conflict || comparison))) return;
   if (!navigator.onLine) {
-    syncStatus('当前离线，修改已保存在本机。');
+    syncStatus(t('当前离线，修改已保存在本机。'));
     if (manual) toast(message);
     return;
   }
@@ -1153,7 +1194,7 @@ async function sync(manual = false) {
       return;
     }
     const remote = await api('inventory');
-    if (!remote.tag) throw Error('云端未返回库存版本');
+    if (!remote.tag) throw Error(t('云端未返回库存版本'));
     local = await load(k);
     // The write may have succeeded even when its response never reached the client.
     if (local.pending && local.pending.id === remote.json.operation && remote.json.data) {
@@ -1178,7 +1219,7 @@ async function sync(manual = false) {
     if (plan === 'conflict') {
       comparison = null;
       conflict = { ...remote, localRevision: local.revision };
-      syncStatus('本机和云端版本已分叉，请选择同步方式。');
+      syncStatus(t('本机和云端版本已分叉，请选择同步方式。'));
       render();
       return;
     }
@@ -1188,7 +1229,7 @@ async function sync(manual = false) {
       return;
     }
     if (plan === 'empty') {
-      syncStatus('云端尚无库存。已有未登录库存时，可在设置中选择导入本地库存。');
+      syncStatus(t('云端尚无库存。已有未登录库存时，可在设置中选择导入本地库存。'));
       return;
     }
     if (plan === 'push') await push(k, local, remote, local.data);
@@ -1201,11 +1242,11 @@ async function sync(manual = false) {
     }
     syncedMessage();
   } catch (e) {
-    syncStatus(e.message);
+    syncStatus(t(e.message));
     if (e.status === 409) queue(1000);
     else if (e.retry) queue(e.retry * 1000);
     else if (!e.status || e.status >= 500) queue(30000);
-    if (manual) toast(e.message);
+    if (manual) toast(t(e.message));
   } finally {
     busy = false;
   }
@@ -1215,20 +1256,23 @@ function showConflict() {
   if (!selected) return;
   const cloud = selected.json.data;
   sheet(
-    '手动同步',
-    '<div class="stack"><p>本机 ' +
+    t('手动同步'),
+    t('<div class="stack"><p>本机 ') +
       state.data.spools.length +
-      ' 卷 · ' +
+      t(' 卷 · ') +
       (cloud
-        ? '云端 ' + cloud.spools.length + ' 卷 · 版本 ' + escapeHtml(selected.json.revision ?? '—')
-        : '云端尚无库存') +
+        ? t('云端 ') +
+          cloud.spools.length +
+          t(' 卷 · 版本 ') +
+          escapeHtml(selected.json.revision ?? '—')
+        : t('云端尚无库存')) +
       '</p>' +
-      '<p class="muted">合并会保留双方的独立修改。同一条记录在两端都改过时，会提示冲突。</p>' +
+      t('<p class="muted">合并会保留双方的独立修改。同一条记录在两端都改过时，会提示冲突。</p>') +
       actions(
-        button('导出本机备份', 'backup'),
-        button('合并并更新云端', 'resolve', 'merge', 'primary'),
-        ...(cloud ? [button('用云端恢复本机', 'resolve', 'remote')] : []),
-        button('用本机覆盖云端', 'resolve', 'local'),
+        button(t('导出本机备份'), 'backup'),
+        button(t('合并并更新云端'), 'resolve', 'merge', 'primary'),
+        ...(cloud ? [button(t('用云端恢复本机'), 'resolve', 'remote')] : []),
+        button(t('用本机覆盖云端'), 'resolve', 'local'),
       ) +
       '<p class="alert" id="form-error"></p></div>',
   );
@@ -1242,15 +1286,15 @@ async function resolve(mode) {
     const local = await load(k),
       remote = await api('inventory');
     state = local;
-    if (!remote.tag) throw Error('云端未返回库存版本');
+    if (!remote.tag) throw Error(t('云端未返回库存版本'));
     if (saved.tag !== remote.tag || saved.localRevision !== local.revision) {
       comparison = { ...remote, localRevision: local.revision };
       showConflict();
-      throw Error('同步预览已更新，请重新选择同步方式。');
+      throw Error(t('同步预览已更新，请重新选择同步方式。'));
     }
     const cloud = remote.json.data;
     if (mode === 'remote') {
-      if (!cloud) throw Error('云端尚无可恢复库存');
+      if (!cloud) throw Error(t('云端尚无可恢复库存'));
       await acknowledge(k, local, remote, validate(cloud), true);
     } else {
       const merged =
@@ -1267,16 +1311,16 @@ async function resolve(mode) {
     if (e.status === 409) {
       conflict = saved;
       comparison = null;
-      syncStatus('写入期间云端版本已变化，请重新选择同步方式。');
+      syncStatus(t('写入期间云端版本已变化，请重新选择同步方式。'));
       try {
         const [remote, local] = await Promise.all([api('inventory'), load(k)]);
         comparison = { ...remote, localRevision: local.revision };
       } catch {
         showConflict();
-        throw Error('暂时无法读取最新云端版本。可保留本机数据，稍后重新打开手动同步。');
+        throw Error(t('暂时无法读取最新云端版本。可保留本机数据，稍后重新打开手动同步。'));
       }
       showConflict();
-      throw Error('已加载最新云端版本。请在下方重新选择同步方式。');
+      throw Error(t('已加载最新云端版本。请在下方重新选择同步方式。'));
     }
     throw e;
   } finally {
@@ -1316,7 +1360,7 @@ function pick(source, x = 0.5, y = 0.5) {
     )
     .join('');
   $('[name=color]').value = $('[name=hex]').value = '#' + rgb;
-  toast('已取色 #' + rgb);
+  toast(t('已取色 #') + rgb);
 }
 function confirm(title, text, action, key) {
   sheet(
@@ -1324,7 +1368,7 @@ function confirm(title, text, action, key) {
     '<div class="stack"><p>' +
       text +
       '</p>' +
-      actions(button('取消', 'close'), button('确认', 'confirm-' + action, key, 'primary')) +
+      actions(button(t('取消'), 'close'), button(t('确认'), 'confirm-' + action, key, 'primary')) +
       '<p class="alert" id="form-error"></p></div>',
   );
 }
@@ -1357,34 +1401,38 @@ const acts = {
     const list = activeRolls().filter((s) => s.location !== k);
     if (!list.length)
       return sheet(
-        '装入 AMS',
-        emptyState('暂无可装入卷盘', '先新增一卷库存。', button('新增耗材', 'new', '', 'primary')),
+        t('装入 AMS'),
+        emptyState(
+          t('暂无可装入卷盘'),
+          t('先新增一卷库存。'),
+          button(t('新增耗材'), 'new', '', 'primary'),
+        ),
       );
     form(
-      '装入 ' + escapeHtml(placeName(k)),
+      t('装入 ') + escapeHtml(placeName(k)),
       'load',
       select(
-        '选择卷盘',
+        t('选择卷盘'),
         'spool',
         list.map((s) => option(s.id, name(s) + ' · ' + s.brand)).join(''),
       ),
       k,
-      '装入',
+      t('装入'),
     );
   },
   device: () =>
     form(
-      '新增 AMS',
+      t('新增 AMS'),
       'device',
-      field('设备名称', 'name', '', 'text', 'required') +
-        field('槽位数量', 'slots', 4, 'number', 'min="1" max="16" required'),
+      field(t('设备名称'), 'name', '', 'text', 'required') +
+        field(t('槽位数量'), 'slots', 4, 'number', 'min="1" max="16" required'),
     ),
   place: () =>
     form(
-      '新增位置',
+      t('新增位置'),
       'place',
-      field('位置名称', 'name', '', 'text', 'required') +
-        field('容量（0 为不限）', 'capacity', 0, 'number', 'min="0" max="10000" required'),
+      field(t('位置名称'), 'name', '', 'text', 'required') +
+        field(t('容量（0 为不限）'), 'capacity', 0, 'number', 'min="0" max="10000" required'),
     ),
   'filter-place': (k) => {
     query = '';
@@ -1411,8 +1459,8 @@ const acts = {
   dry: (k) => drySheet(spool(state.data, k)),
   'dry-now': (k) => {
     const device = dryDevice(panel.querySelector('form'));
-    if (!device) throw Error('请选择或输入烘干设备');
-    return save((d) => recordDry(d, spool(d, k), now(), device, [], true), '已记录完全烘干');
+    if (!device) throw Error(t('请选择或输入烘干设备'));
+    return save((d) => recordDry(d, spool(d, k), now(), device, [], true), t('已记录完全烘干'));
   },
   'dry-batch': (k) => {
     const dev = state.data.devices.find((d) => d.id === k);
@@ -1420,9 +1468,9 @@ const acts = {
   },
   audit: () =>
     sheet(
-      '库存盘点',
+      t('库存盘点'),
       activeRolls().length
-        ? actions(button('批量确认已盘点', 'audit-all')) +
+        ? actions(button(t('批量确认已盘点'), 'audit-all')) +
             activeRolls()
               .map(
                 (s) =>
@@ -1432,48 +1480,48 @@ const acts = {
                   escapeHtml(placeName(s.location)) +
                   ' · ' +
                   grams(s.remaining) +
-                  '</p><p class="muted dry-summary">上次烘干 ' +
+                  t('</p><p class="muted dry-summary">上次烘干 ') +
                   dryAge(s, true) +
                   '</p></div>' +
-                  button('盘点', 'audit-single', s.id) +
+                  button(t('盘点'), 'audit-single', s.id) +
                   '</div>',
               )
               .join('')
-        : emptyState('没有待盘点卷盘'),
+        : emptyState(t('没有待盘点卷盘')),
     ),
-  'audit-all': () => confirm('确认盘点', '将所有在库卷盘标记为已核对。', 'audit-all'),
+  'audit-all': () => confirm(t('确认盘点'), t('将所有在库卷盘标记为已核对。'), 'audit-all'),
   'confirm-audit-all': () =>
     save((d) => {
       for (const s of d.spools.filter(active)) {
         s.lastAudit = now();
         log(d, s, 'audit', s.remaining, s.remaining);
       }
-    }, '已核对在库卷盘'),
+    }, t('已核对在库卷盘')),
   'audit-single': (k) =>
     form(
-      '核对 ' + escapeHtml(name(spool(state.data, k))),
+      t('核对 ') + escapeHtml(name(spool(state.data, k))),
       'audit',
       field(
-        '当前余量（g）',
+        t('当前余量（g）'),
         'grams',
         spool(state.data, k).remaining,
         'number',
         'min="0" required',
-      ) + select('当前位置', 'location', locations(spool(state.data, k).location)),
+      ) + select(t('当前位置'), 'location', locations(spool(state.data, k).location)),
       k,
-      '确认盘点',
+      t('确认盘点'),
     ),
   alerts: () => {
     const rows = activeRolls()
       .map((s) => [
         s,
-        [alertFor(s), pct(s) <= state.data.settings.low ? '余量偏低' : '']
+        [alertFor(s), pct(s) <= state.data.settings.low ? t('余量偏低') : '']
           .filter(Boolean)
           .join(' · '),
       ])
       .filter(([, v]) => v);
     sheet(
-      '提醒中心',
+      t('提醒中心'),
       rows
         .map(
           ([s, v]) =>
@@ -1482,33 +1530,33 @@ const acts = {
             '</strong><p class="muted">' +
             escapeHtml(v) +
             '</p></div>' +
-            button('查看', 'detail', s.id) +
+            button(t('查看'), 'detail', s.id) +
             '</div>',
         )
-        .join('') || emptyState('当前没有待处理提醒'),
+        .join('') || emptyState(t('当前没有待处理提醒')),
     );
   },
   rules: () =>
     form(
-      '提醒规则',
+      t('提醒规则'),
       'rules',
       field(
-        '低余量阈值（%）',
+        t('低余量阈值（%）'),
         'low',
         state.data.settings.low,
         'number',
         'min="0" max="100" required',
       ) +
         field(
-          '普通存储烘干检查（天）',
+          t('普通存储烘干检查（天）'),
           'dryDays',
           state.data.settings.dryDays,
           'number',
           'min="1" max="3650" required',
         ),
     ),
-  archive: (k) => confirm('归档卷盘', '将卷盘移出当前库存并保留历史。', 'archive', k),
-  trash: (k) => confirm('移到回收站', '可通过库存中的「已删除」筛选恢复。', 'trash', k),
+  archive: (k) => confirm(t('归档卷盘'), t('将卷盘移出当前库存并保留历史。'), 'archive', k),
+  trash: (k) => confirm(t('移到回收站'), t('可通过库存中的「已删除」筛选恢复。'), 'trash', k),
   'confirm-archive': (k) => setStatus(k, '已归档'),
   'confirm-trash': (k) => setStatus(k, '已删除'),
   recover: (k) =>
@@ -1516,23 +1564,23 @@ const acts = {
       const s = spool(d, k);
       log(d, s, 'restore', s.status, '已开封');
       s.status = s.remaining ? '已开封' : '已耗尽';
-    }, '已恢复'),
+    }, t('已恢复')),
   summary: () =>
     sheet(
-      '库存总结',
+      t('库存总结'),
       '<textarea id="summary" rows="7" readonly>' +
         escapeHtml(summary()) +
         '</textarea>' +
-        actions(button('复制总结', 'copy-summary'), button('导出库存 CSV', 'csv')),
+        actions(button(t('复制总结'), 'copy-summary'), button(t('导出库存 CSV'), 'csv')),
     ),
   'copy-summary': async () => {
     const t = $('#summary');
     try {
       await navigator.clipboard.writeText(t.value);
-      toast('已复制');
+      toast(t('已复制'));
     } catch {
       t.select();
-      toast('文本已选中，可用系统菜单复制');
+      toast(t('文本已选中，可用系统菜单复制'));
     }
   },
   backup: () => exportData(state.data),
@@ -1545,7 +1593,7 @@ const acts = {
         .replaceAll('"', '""') +
       '"';
     const rows = [
-      ['品牌', '材料', '颜色', '购买日期', '净余量 g', '位置', '状态'],
+      [t('品牌'), t('材料'), t('颜色'), t('购买日期'), t('净余量 g'), t('位置'), t('状态')],
       ...state.data.spools
         .filter((s) => s.status !== '已删除')
         .map((s) => [
@@ -1567,13 +1615,15 @@ const acts = {
   restore: () => {
     backupData = null;
     sheet(
-      '恢复库存',
-      '<label>选择备份文件<input type="file" id="restore-file" accept=".json,application/json"></label><p role="alert" class="alert" id="form-error"></p><div id="import-actions"></div>',
+      t('恢复库存'),
+      t(
+        '<label>选择备份文件<input type="file" id="restore-file" accept=".json,application/json"></label><p role="alert" class="alert" id="form-error"></p><div id="import-actions"></div>',
+      ),
     );
   },
   'merge-backup': () =>
-    save((d) => Object.assign(d, mergeImportedInventory(d, backupData)), '已合并备份'),
-  'replace-backup': () => confirm('替换设备库存', '替换前会在本机保留快照。', 'backup'),
+    save((d) => Object.assign(d, mergeImportedInventory(d, backupData)), t('已合并备份')),
+  'replace-backup': () => confirm(t('替换设备库存'), t('替换前会在本机保留快照。'), 'backup'),
   'confirm-backup': async () => {
     state = await transact(key(), (v) => ({
       ...v,
@@ -1585,62 +1635,77 @@ const acts = {
     panel.close();
     render();
     queue();
-    toast('已恢复备份');
+    toast(t('已恢复备份'));
   },
   login: () =>
     form(
-      '登录云同步',
+      t('登录云同步'),
       'login',
-      field('用户名', 'username', account?.name, 'text', 'autocomplete="username" required') +
-        field('密码', 'password', '', 'password', 'autocomplete="current-password" required') +
-        '<p class="wide muted">账号库存与本地库存分别保存。你可以在登录后导入本地库存。</p>',
+      field(t('用户名'), 'username', account?.name, 'text', 'autocomplete="username" required') +
+        field(t('密码'), 'password', '', 'password', 'autocomplete="current-password" required') +
+        t('<p class="wide muted">账号库存与本地库存分别保存。你可以在登录后导入本地库存。</p>'),
       '',
-      '登录',
+      t('登录'),
     ),
   logout: async () => {
-    if (busy) throw Error('请等待同步完成');
+    if (busy) throw Error(t('请等待同步完成'));
     await api('logout', 'POST');
     await attach(null);
-    syncStatus('已退出云同步。');
+    syncStatus(t('已退出云同步。'));
   },
   sync: () => sync(true),
   conflict: () => sync(true),
   resolve,
   adopt: () =>
-    confirm('导入本地库存', '将此设备未登录时保存的库存并入当前账号，并自动同步到云端。', 'adopt'),
+    confirm(
+      t('导入本地库存'),
+      t('将此设备未登录时保存的库存并入当前账号，并自动同步到云端。'),
+      'adopt',
+    ),
   'confirm-adopt': async () => {
     const previous = await load('local');
-    if (!previous.data.spools.length) throw Error('此设备无可导入的本地卷盘');
+    if (!previous.data.spools.length) throw Error(t('此设备无可导入的本地卷盘'));
     await save((d) => {
       Object.assign(d, mergeImportedInventory(d, previous.data));
       d.settings.guestImported = true;
-    }, '已导入本地库存，等待自动同步');
+    }, t('已导入本地库存，等待自动同步'));
   },
   persist: async () =>
     toast(
       (await navigator.storage?.persist?.())
-        ? '已获得浏览器持久存储权限'
-        : '浏览器未授予持久存储权限',
+        ? t('已获得浏览器持久存储权限')
+        : t('浏览器未授予持久存储权限'),
     ),
   install: async () => {
     if (matchMedia('(display-mode:standalone)').matches || navigator.standalone)
-      return toast('当前已在独立窗口运行');
+      return toast(t('当前已在独立窗口运行'));
     if (install) {
-      await install.prompt();
+      const promptEvent = install;
       install = null;
-      return;
+      try {
+        const choice = await promptEvent.prompt();
+        if ((choice ?? (await promptEvent.userChoice))?.outcome === 'accepted')
+          toast(t('安装请求已接受。Chrome 会继续处理安装。'));
+        return;
+      } catch {
+        // A consumed prompt cannot be reused. Fall back to browser instructions.
+      }
     }
     sheet(
-      '添加到主屏幕',
+      t('添加到主屏幕'),
       '<p>' +
         (/iPhone|iPad|iPod/.test(navigator.userAgent)
-          ? '在 Safari 分享菜单中选择「添加到主屏幕」。'
-          : '在 Chrome 浏览器菜单选择「安装应用」或「添加到主屏幕」。') +
+          ? t('在 Safari 分享菜单中选择「添加到主屏幕」。')
+          : t('在 Chrome 浏览器菜单选择「安装应用」或「添加到主屏幕」。')) +
+        '</p><p class="muted">' +
+        (/Android/i.test(navigator.userAgent)
+          ? t('若安装长时间未完成，请在普通 Chrome 标签页重新打开本站，再从菜单安装。')
+          : '') +
         '</p>',
     );
   },
   camera: async () => {
-    if (!navigator.mediaDevices?.getUserMedia) return toast('摄像头不可用，可用相册取色');
+    if (!navigator.mediaDevices?.getUserMedia) return toast(t('摄像头不可用，可用相册取色'));
     stopCamera();
     const preview = $('#photo-preview');
     try {
@@ -1655,10 +1720,10 @@ const acts = {
       camera = media;
       preview.innerHTML =
         '<video autoplay muted playsinline></video>' +
-        actions(button('取中心色', 'capture'), button('停止摄像头', 'stop-camera'));
+        actions(button(t('取中心色'), 'capture'), button(t('停止摄像头'), 'stop-camera'));
       $('video').srcObject = media;
     } catch {
-      toast('摄像头不可用，可从相册取色');
+      toast(t('摄像头不可用，可从相册取色'));
     }
   },
   capture: () => pick($('video')),
@@ -1690,10 +1755,12 @@ function warnExternal(form) {
   const confirmation = document.createElement('section');
   confirmation.className = 'stack placement-warning';
   confirmation.innerHTML =
-    '<h2>确认放到外挂</h2><p>这次操作会把易吸湿耗材放到外挂料架。外挂按 70% RH 估算，长时间存放可能增加受潮风险。</p>' +
+    t(
+      '<h2>确认放到外挂</h2><p>这次操作会把易吸湿耗材放到外挂料架。外挂按 70% RH 估算，长时间存放可能增加受潮风险。</p>',
+    ) +
     actions(
-      button('返回修改', 'cancel-external'),
-      button('确认放到外挂', 'confirm-external', '', 'primary'),
+      button(t('返回修改'), 'cancel-external'),
+      button(t('确认放到外挂'), 'confirm-external', '', 'primary'),
     );
   panel.prepend(confirmation);
   confirmation.querySelector('button').focus();
@@ -1704,7 +1771,7 @@ async function submit(form, allowExternal = false) {
     v = (n) => String(f.get(n) || '').trim(),
     n = (k) => Number(v(k));
   if (kind === 'login') {
-    if (busy) throw Error('请等待正在进行的同步');
+    if (busy) throw Error(t('请等待正在进行的同步'));
     busy = true;
     try {
       const r = await api('login', 'POST', {
@@ -1729,13 +1796,13 @@ async function submit(form, allowExternal = false) {
       const enteredMaterial = v('material') === customChoice ? v('materialCustom') : v('material');
       const material = enteredMaterial.toUpperCase() === 'PLA-SIL' ? 'PLA-SILK' : enteredMaterial;
       if (!brand || !material || !Number.isInteger(qty) || qty < 1 || qty > 100)
-        throw Error('请检查品牌、材料和卷数');
-      if (v('opened') && v('opened') < v('bought')) throw Error('开封时间早于购买日期');
+        throw Error(t('请检查品牌、材料和卷数'));
+      if (v('opened') && v('opened') < v('bought')) throw Error(t('开封时间早于购买日期'));
       for (let i = 0; i < qty; i++) {
         const s = k
           ? spool(d, k)
           : { id: id(), remaining: weight, created: now(), confidence: '估算', location: '' };
-        if (weight < s.remaining) throw Error('初始净重量不能低于当前余量');
+        if (weight < s.remaining) throw Error(t('初始净重量不能低于当前余量'));
         Object.assign(
           s,
           Object.fromEntries(
@@ -1777,11 +1844,11 @@ async function submit(form, allowExternal = false) {
     if (kind === 'amount' || kind === 'audit') {
       const s = spool(d, k),
         old = s.remaining;
-      if (v('gross') && !v('tare')) throw Error('需要空盘重量才能从总重计算净余量');
+      if (v('gross') && !v('tare')) throw Error(t('需要空盘重量才能从总重计算净余量'));
       const value = v('gross') ? n('gross') - n('tare') : n('grams');
       const reason = kind === 'audit' ? 'audit' : v('reason');
       if (value < 0 || value > s.weight || (['print', 'loss'].includes(reason) && value > old))
-        throw Error('净余量不符合有效范围');
+        throw Error(t('净余量不符合有效范围'));
       s.remaining = value;
       if (!value) s.status = '已耗尽';
       else if (s.status === '已耗尽') s.status = '已开封';
@@ -1798,11 +1865,11 @@ async function submit(form, allowExternal = false) {
     if (kind === 'place') d.places.push({ id: id(), name: v('name'), capacity: n('capacity') });
     if (kind === 'dry') {
       const dryer = dryDevice(form);
-      if (!dryer) throw Error('请选择或输入烘干设备');
+      if (!dryer) throw Error(t('请选择或输入烘干设备'));
       if (/ams\s*2\s*pro/i.test(dryer) && n('temperature') > 65)
-        throw Error('AMS 2 Pro 的最高烘干温度为 65 °C，请核对设备和实际记录');
+        throw Error(t('AMS 2 Pro 的最高烘干温度为 65 °C，请核对设备和实际记录'));
       const t = new Date(v('at'));
-      if (t > Date.now() + 60000) throw Error('完成时间晚于当前时间');
+      if (t > Date.now() + 60000) throw Error(t('完成时间晚于当前时间'));
       recordDry(d, spool(d, k), t.toISOString(), dryer, [
         v('minutes') ? v('minutes') + ' 分钟' : '',
         v('temperature') ? v('temperature') + ' °C' : '',
@@ -1812,12 +1879,13 @@ async function submit(form, allowExternal = false) {
     if (kind === 'dry-batch') {
       const dev = d.devices.find((x) => x.id === k);
       const checked = Array.from(form.querySelectorAll('[name=roll]:checked'));
-      if (!dev || !isAms2Pro(dev) || !checked.length) throw Error('请至少选择一个 AMS 2 Pro 槽位');
+      if (!dev || !isAms2Pro(dev) || !checked.length)
+        throw Error(t('请至少选择一个 AMS 2 Pro 槽位'));
       const at = now();
       for (const control of checked) {
         const s = spool(d, control.value);
         if (s.location !== control.dataset.slot || !inAms(s, dev))
-          throw Error('槽位卷盘已变更，请重新打开批量记录');
+          throw Error(t('槽位卷盘已变更，请重新打开批量记录'));
         recordDry(d, s, at, dev.name, [], true);
       }
     }
@@ -1865,6 +1933,13 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', async (e) => {
   const input = e.target;
   try {
+    if (input.name === 'language') {
+      setLanguage(input.value);
+      message = '';
+      render();
+      $('[name=language]')?.focus();
+      return;
+    }
     if (input.name === 'filter-status') {
       stockStatus = input.value;
       render();
@@ -1896,7 +1971,7 @@ document.addEventListener('change', async (e) => {
       try {
         photo.src = url;
         await photo.decode();
-        photo.alt = '点选要提取的颜色';
+        photo.alt = t('点选要提取的颜色');
         $('#photo-preview').replaceChildren(photo);
         photo.onclick = (e) => pick(photo, e.offsetX / photo.width, e.offsetY / photo.height);
         pick(photo);
@@ -1913,17 +1988,17 @@ document.addEventListener('change', async (e) => {
         x.schemaVersion !== 1 ||
         x.sha256 !== (await digest(x.data))
       )
-        throw Error('文件格式、版本或校验不匹配');
+        throw Error(t('文件格式、版本或校验不匹配'));
       backupData = validate(x.data);
       $('#import-actions').innerHTML =
-        '<p>当前 ' +
+        t('<p>当前 ') +
         state.data.spools.length +
-        ' 卷 · 备份 ' +
+        t(' 卷 · 备份 ') +
         backupData.spools.length +
-        ' 卷</p>' +
+        t(' 卷</p>') +
         actions(
-          button('合并并保留现有记录', 'merge-backup', '', 'primary'),
-          button('替换库存', 'replace-backup'),
+          button(t('合并并保留现有记录'), 'merge-backup', '', 'primary'),
+          button(t('替换库存'), 'replace-backup'),
         );
     }
   } catch (error) {
@@ -1977,14 +2052,22 @@ async function boot() {
     } catch (e) {
       syncStatus(
         e.status === 401 && account
-          ? '会话已过期，仍可使用该账号的离线库存。'
+          ? t('会话已过期，仍可使用该账号的离线库存。')
           : e.status === 401
-            ? '登录后可同步跨设备库存。'
+            ? t('登录后可同步跨设备库存。')
             : e.message,
       );
     }
   } catch (e) {
-    main.textContent = e.message;
+    main.textContent = t(e.message);
   }
 }
+document.documentElement.lang = currentLocale();
+main.textContent = t('正在打开库存') + '…';
+window.addEventListener('languagechange', () => {
+  if (languagePreference() === 'auto') {
+    setLanguage('auto');
+    render();
+  }
+});
 boot();

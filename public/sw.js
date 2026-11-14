@@ -1,8 +1,11 @@
-const cacheName = 'filament-studio-v10';
+const cacheName = 'filament-studio-v0.1.2';
 const paths = [
   './',
   './app.js',
   './ui.js',
+  './i18n.js',
+  './en.js',
+  './ja.js',
   './inventory-store.js',
   './sync.js',
   './model.js',
@@ -17,11 +20,13 @@ self.addEventListener('install', (event) =>
   event.waitUntil(
     (async () => {
       const cache = await caches.open(cacheName);
-      for (const path of paths) {
-        const response = await fetch(path, { cache: 'reload' });
-        if (!response.ok || response.redirected) throw Error('无法缓存应用');
-        await cache.put(path, response);
-      }
+      await Promise.all(
+        paths.map(async (path) => {
+          const response = await fetch(path, { cache: 'reload' });
+          if (!response.ok || response.redirected) throw Error('无法缓存应用');
+          await cache.put(path, response);
+        }),
+      );
     })(),
   ),
 );
@@ -45,9 +50,26 @@ self.addEventListener('fetch', (event) => {
   if (
     event.request.method !== 'GET' ||
     url.origin !== location.origin ||
-    url.pathname.startsWith('/api/')
-  )
+    url.pathname.startsWith('/api/') ||
+    url.pathname.endsWith('/app.webmanifest') ||
+    url.pathname.endsWith('/icon-192.png') ||
+    url.pathname.endsWith('/icon-512.png')
+  ) {
+    // Chromium's installer should see the deployed manifest and icons; cached copies remain available offline.
+    if (
+      event.request.method === 'GET' &&
+      url.origin === location.origin &&
+      /\/(app\.webmanifest|icon-(192|512)\.png)$/.test(url.pathname)
+    ) {
+      event.respondWith(
+        fetch(event.request).catch(
+          async () =>
+            (await (await caches.open(cacheName)).match(event.request)) || Response.error(),
+        ),
+      );
+    }
     return;
+  }
   if (event.request.mode === 'navigate' && url.pathname === '/')
     event.respondWith(
       fetch(event.request).catch(

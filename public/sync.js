@@ -1,3 +1,4 @@
+import { t } from './i18n.js';
 import { validate } from './model.js';
 
 function ordered(value) {
@@ -33,7 +34,7 @@ export function syncPlan(local, remote) {
 function choose(base, local, cloud, label) {
   if (sameInventory(local, cloud) || sameInventory(base, cloud)) return local;
   if (sameInventory(base, local)) return cloud;
-  throw Error('两端均修改了「' + label + '」，请选择覆盖或恢复。');
+  throw Error(t('两端均修改了「{label}」，请选择覆盖或恢复。', { label: t(label) }));
 }
 export function mergeInventory(base, local, cloud) {
   const merged = { ...local };

@@ -43,7 +43,7 @@ test('Bambu PETG matte and HF have distinct pre-drying rules', () => {
       { brand: 'Bambu Lab', family: 'PETG', material: 'PETG HF', status: '未开封' },
       { settings: { dryDays: 30 } },
     ),
-    /打印前要求/,
+    /Drying is required before printing/,
   );
 });
 test('brand aliases, engineering ranges and exposure classifications', () => {

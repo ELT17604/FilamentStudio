@@ -1,3 +1,4 @@
+import { t } from './i18n.js';
 import { resolveMaterial, normalize } from './material-data.js';
 export function materialGuide(spool) {
   const profile = resolveMaterial(spool);
@@ -62,20 +63,20 @@ export function storageHumidity(d, location) {
 }
 export function dryingReminder(s, d, time = Date.now()) {
   if (s.status === '烘干中') return '';
-  if (s.damp) return '已标记受潮，打印前请检查并按该产品参数烘干';
+  if (s.damp) return t('已标记受潮，打印前请检查并按该产品参数烘干');
   const g = materialGuide(s);
   if (
     (g.official || g.brandCategory) &&
     g.required &&
     (!s.lastDry || (s.opened && Date.parse(s.opened) > Date.parse(s.lastDry)))
   )
-    return '打印前要求烘干，尚无开封后的完成记录';
+    return t('打印前要求烘干，尚无开封后的完成记录');
   if (s.status === '未开封') return '';
   const humidity = storageHumidity(d, s.location);
   if (humidity === 70 && moistureSensitive(s))
-    return '外挂按 70% RH 估算。该材料易吸湿，建议改用密封存放并在打印前检查';
+    return t('外挂按 70% RH 估算。该材料易吸湿，建议改用密封存放并在打印前检查');
   const reference = s.lastDry || s.opened;
-  if (!reference) return '缺少开封或烘干日期，请检查耗材状态';
+  if (!reference) return t('缺少开封或烘干日期，请检查耗材状态');
   const days = Math.max(
     1,
     Math.round(
@@ -85,6 +86,6 @@ export function dryingReminder(s, d, time = Date.now()) {
     ),
   );
   if (time - Date.parse(reference) >= days * 86400000)
-    return '距开封或上次烘干已达到 ' + days + ' 天的检查周期';
+    return t('距开封或上次烘干已达到 {days} 天的检查周期', { days });
   return '';
 }
