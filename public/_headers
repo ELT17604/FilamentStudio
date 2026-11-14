@@ -1,0 +1,6 @@
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: same-origin
+  Permissions-Policy: camera=(self), microphone=()
+/sw.js
+  Cache-Control: no-cache

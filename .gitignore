@@ -1,0 +1,8 @@
+/dist/
+/node_modules/
+/.wrangler/
+/.sites-checkout/
+.env
+.env.*
+.dev.vars
+.dev.vars.*

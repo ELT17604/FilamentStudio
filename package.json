@@ -1,0 +1,11 @@
+{
+  "name": "filament-studio",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test scripts/worker.test.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
