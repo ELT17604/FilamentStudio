@@ -1,5 +1,5 @@
-const cacheName='filament-studio-v7';
-const paths=['./','./app.js','./model.js','./guide.js','./material-data.js','./style.css','./app.webmanifest','./icon-192.png','./icon-512.png'];
+const cacheName='filament-studio-v8';
+const paths=['./','./app.js','./sync.js','./model.js','./guide.js','./material-data.js','./style.css','./app.webmanifest','./icon-192.png','./icon-512.png'];
 self.addEventListener('install',event=>event.waitUntil((async()=>{
  const cache=await caches.open(cacheName);
  for(const path of paths){const response=await fetch(path,{cache:'reload'});if(!response.ok||response.redirected)throw Error('无法缓存应用');await cache.put(path,response);}

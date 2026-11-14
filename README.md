@@ -77,3 +77,9 @@ Node.js 22+ 下执行 `npm test`。测试直接调用 Pages Function 入口，�
 - `scripts/password-verifier.mjs` 在本地生成密码校验值。
 
 [Pages Git 集成](https://developers.cloudflare.com/pages/get-started/git-integration/) · [Pages Functions 与 R2 绑定](https://developers.cloudflare.com/pages/functions/bindings/) · [Pages Functions 路由配置](https://developers.cloudflare.com/pages/functions/routing/)
+
+## 库存同步
+
+首次在已有库存的设备登录时，选择「导入本地库存」，将未登录时保存的库存并入账号。保持页面打开，最后一次编辑后约 8 秒，应用会检查 R2 版本并上传有效变更。其他设备使用同一账号登录后可拉取库存，已打开的前台页面也会定期检查更新。
+
+「设置 → 手动同步」提供合并更新、本机覆盖和云端恢复。合并使用上次共同同步的数据比对双方修改，同一记录发生冲突时会提示选择。覆盖仍会校验云端版本，防止覆盖确认之后发生的新改动。

@@ -1,3 +1,4 @@
+import {sameInventory,mergeInventory,syncPlan} from './sync.js';
 import {sources,materialChoices,families} from './material-data.js';
 import {fresh,allPlaces,active,validate,formatDate,storagePlaces,reorderStoragePlace,dryingAge,unopenedId,unopenedPlace} from './model.js';
 import {guideUrl,amsUrl,materialGuide,dryingReminder,moistureSensitive,storageHumidity} from './guide.js';
@@ -37,6 +38,7 @@ const localTime=()=>{const t=new Date();return formatDate()+'T'+[t.getHours(),t.
 let db, account=null, state, timer, camera, query='', material='', stockStatus='', selectedPlace='', message='', conflict, busy=false, install, backupData;
 let toastTimer;
 let placementWarning;
+let comparison;
 const placeName=k=>allPlaces(state.data).find(x=>x.id===k)?.name||'未分配';
 const locations=(value='')=>option('','未分配',value)+allPlaces(state.data).map(p=>option(p.id,p.name,value)).join('');
 const spool=(d,k)=>{const s=d.spools.find(x=>x.id===k);if(!s)throw Error('卷盘已不存在');return s;};
@@ -56,8 +58,10 @@ function transact(key,fn){
 const key=()=>account?.id||'local';
 async function load(key){return transact(key,v=>v);}
 async function save(change,ok='已保存'){
- state=await transact(key(),v=>{change(v.data);validate(v.data);v.revision++;return v;});
- panel.close();render();toast(ok);queue();
+ state=await transact(key(),v=>{change(v.data);validate(v.data);v.revision++;v.editedAt=Date.now();return v;});
+ panel.close();render();toast(ok);
+ if(account)syncStatus(conflict?'本机已保存，等待处理同步冲突。':'本机已保存，等待自动同步。');
+ queue();
 }
 function sheet(title,body){stopCamera();if(!panel.open)panel.showModal();panel.innerHTML=sec(title,btn('关闭','close'))+body;}
 function form(title,kind,body,key='',label='保存'){sheet(title,'<form class="forms" data-kind="'+kind+'" data-key="'+h(key)+'">'+body+'<p class="wide alert" role="alert" id="form-error"></p><div class="wide actions">'+btn('取消','close')+'<button class="primary">'+label+'</button></div></form>');}
@@ -111,7 +115,7 @@ function stats(){
 }
 function settings(){
  return head('设置','管理云同步、备份和应用安装。')+grid([
- '<section class="card stack"><h2>云同步'+(account?' · '+h(account.name):'')+'</h2><p class="muted" id="sync-state">'+h(message||'登录后可在设备之间同步库存。')+'</p>'+actions(btn('登录 / 更新会话','login','','primary'),...(account?[btn('立即同步','sync'),btn('导入本地库存','adopt'),btn('退出账号','logout')]:[]),...(conflict?[btn('处理冲突','conflict')]:[]))+'</section>',
+ '<section class="card stack"><h2>云同步'+(account?' · '+h(account.name):'')+'</h2><p class="muted" id="sync-state">'+h(message||'登录后可在设备之间同步库存。')+'</p>'+actions(btn('登录 / 更新会话','login','','primary'),...(account?[btn('手动同步','sync'),btn('导入本地库存','adopt'),btn('退出账号','logout')]:[]),...(conflict?[btn('处理冲突','conflict')]:[]))+'</section>',
  '<section class="card stack"><h2>备份与恢复</h2><p class="muted">完整 JSON 包含卷盘、位置、设备及历史。</p>'+actions(btn('导出 JSON','backup','','primary'),btn('恢复备份','restore'),btn('导出库存 CSV','csv'),...(state.recovery?[btn('导出替换前快照','recovery')]:[]))+'</section>',
  '<section class="card stack"><h2>设备与安装</h2><p class="muted">业务数据保存在 IndexedDB。'+(navigator.serviceWorker?.controller?'离线资源已启用。':'离线资源尚未就绪。')+'</p>'+actions(btn('安装到主屏幕','install'),btn('请求持久存储','persist'))+'</section>',
  '<section class="card stack"><h2>提醒规则</h2><p class="muted">低余量 ≤ '+state.data.settings.low+'% · 普通存储烘干检查 '+state.data.settings.dryDays+' 天</p>'+actions(btn('编辑规则','rules'),btn('提醒中心','alerts'))+'<a href="https://cdn1.bambulab.com/filament/filament-guide/bcv8wbl4hj/filament-guide-en.pdf" target="_blank" rel="noreferrer">Bambu Lab Filament Guide ↗</a></section>'
@@ -258,36 +262,68 @@ async function api(path,method='GET',data,headers={}){
  if(!r.ok)throw Object.assign(Error(json.error),{status:r.status,retry:+r.headers.get('Retry-After')||0});
  return {json,tag:r.headers.get('ETag')};
 }
-function queue(ms=2000){clearTimeout(timer);if(account&&!conflict)timer=setTimeout(sync,ms);}
+const quietMs=8000;
+function queue(ms=quietMs){
+ clearTimeout(timer);
+ if(account&&!conflict)timer=setTimeout(()=>sync(),ms);
+}
 async function attach(user){
- account=user;conflict=null;
+ clearTimeout(timer);
+ account=user;conflict=null;comparison=null;
  if(user)localStorage.setItem('filament-account',JSON.stringify(user));else localStorage.removeItem('filament-account');
  state=await load(key());render();
 }
+async function acknowledge(k,local,remote,data=local.data,replace=false){
+ state=await transact(k,v=>{
+  if(replace&&v.revision!==local.revision)throw Error('本机库存已变更，请重新同步');
+  const revision=replace?v.revision+1:v.revision;
+  return {...v,revision,synced:replace?revision:local.revision,tag:remote.tag,base:structuredClone(data),
+   ...(replace?{data,recovery:v.data}:{}),pending:null};
+ });
+ if(state.revision!==state.synced)queue();
+}
+async function push(k,local,remote,data,replace=false){
+ const op=local.pending?.localRevision===local.revision&&sameInventory(local.pending.data,data)?local.pending.id:id();
+ await transact(k,v=>{
+  if(v.revision!==local.revision)throw Error('本机库存已变更，请重新同步');
+  return {...v,pending:{id:op,localRevision:local.revision,data:structuredClone(data),replace}};
+ });
+ const result=await api('inventory','PUT',data,{'If-Match':remote.tag,'X-Operation-Id':op});
+ if(!result.tag)throw Error('云端未返回写入版本，请重试同步');
+ await acknowledge(k,local,result,data,replace);
+}
+function syncedMessage(){
+ conflict=null;comparison=null;render();syncStatus('已同步 · '+new Date().toLocaleTimeString('zh-CN'));
+}
 async function sync(manual=false){
- if(!account||busy||conflict){if(manual&&conflict)showConflict();return;}
- if(!navigator.onLine){syncStatus('当前离线，修改已保存在本机。');return;}
+ if(!account||busy||(!manual&&conflict))return;
+ if(!navigator.onLine){syncStatus('当前离线，修改已保存在本机。');if(manual)toast(message);return;}
  const k=key();busy=true;
  try{
-  const cached=await load(k),remote=await api('inventory');
-  const dirty=cached.revision!==cached.synced;
-  if(cached.pending&&remote.json.operation===cached.pending.id){
-   state=await transact(k,v=>{v.tag=remote.tag;v.synced=cached.pending.localRevision;delete v.pending;return v;});
-   queue();
-  }else if(remote.json.data&&remote.tag!==cached.tag){
-   if(dirty){conflict=remote;syncStatus('本机和云端已分别修改，请处理版本冲突。');render();if(manual)showConflict();return;}
-   validate(remote.json.data);
-   state=await transact(k,v=>{if(v.revision!==cached.revision)throw Error('本机库存刚刚变化，重新检查同步');return {...v,data:remote.json.data,tag:remote.tag,synced:v.revision};});render();
-  }else if(dirty){
-   const pending=cached.pending?.localRevision===cached.revision?cached.pending:{id:id(),localRevision:cached.revision};
-   await transact(k,v=>({...v,pending}));
-   const result=await api('inventory','PUT',cached.data,{'If-Match':remote.tag,'X-Operation-Id':pending.id});
-   state=await transact(k,v=>{delete v.pending;return {...v,tag:result.tag,synced:cached.revision};});
-   if(state.synced!==state.revision)queue();
-  }else if(!cached.tag){
-   state=await transact(k,v=>({...v,tag:remote.tag}));
+  let local=await load(k);
+  let remaining=quietMs-(Date.now()-(local.editedAt||0));
+  if(!manual&&local.revision!==local.synced&&remaining>0){queue(remaining);return;}
+  const remote=await api('inventory');
+  if(!remote.tag)throw Error('云端未返回库存版本');
+  local=await load(k);
+  if(local.pending&&local.pending.id===remote.json.operation&&remote.json.data){
+   const pending=local.pending;
+   const replace=pending.replace&&pending.localRevision===local.revision;
+   await acknowledge(k,{...local,revision:pending.localRevision},remote,remote.json.data,replace);
+   local=state;
   }
-  syncStatus('已同步 · '+new Date().toLocaleTimeString('zh-CN'));
+  const plan=syncPlan(local,remote);
+  if(manual){comparison=remote;showConflict();return;}
+  if(plan==='conflict'){comparison=null;conflict=remote;syncStatus('本机和云端版本已分叉，请选择同步方式。');render();return;}
+  remaining=quietMs-(Date.now()-(local.editedAt||0));
+  if(plan==='push'&&remaining>0){queue(remaining);return;}
+  if(plan==='empty'){syncStatus('云端尚无库存。可在 A 端登录后导入本地库存。');return;}
+  if(plan==='push')await push(k,local,remote,local.data);
+  if(plan==='pull')await acknowledge(k,local,remote,validate(remote.json.data),true);
+  if(plan==='same'&&(local.tag!==remote.tag||local.revision!==local.synced||!local.base||local.pending)){
+   await acknowledge(k,local,remote,local.data);
+  }
+  syncedMessage();
  }catch(e){
   syncStatus(e.message);
   if(e.status===409)queue(1000);
@@ -296,21 +332,37 @@ async function sync(manual=false){
   if(manual)toast(e.message);
  }finally{busy=false;}
 }
-function showConflict(){sheet('库存同步冲突','<div class="stack"><p>本机 '+state.data.spools.length+' 卷，云端 '+conflict.json.data.spools.length+' 卷。合并时同 ID 以本机为准，槽位冲突会中止。</p>'+actions(btn('导出本机备份','backup'),btn('合并版本','resolve','merge','primary'),btn('采用云端','resolve','remote'),btn('采用本机','resolve','local'))+'<p class="alert" id="form-error"></p></div>');}
+function showConflict(){
+ const selected=comparison||conflict;
+ if(!selected)return;
+ const cloud=selected.json.data;
+ sheet('手动同步','<div class="stack"><p>本机 '+state.data.spools.length+' 卷 · '+(cloud?'云端 '+cloud.spools.length+' 卷 · 版本 '+h(selected.json.revision??'—'):'云端尚无库存')+'</p>'+
+ '<p class="muted">合并会保留双方的独立修改。同一条记录在两端都改过时，会提示冲突。</p>'+
+ actions(btn('导出本机备份','backup'),btn('合并并更新云端','resolve','merge','primary'),...(cloud?[btn('用云端恢复本机','resolve','remote')]:[]),btn('用本机覆盖云端','resolve','local'))+
+ '<p class="alert" id="form-error"></p></div>');
+}
 async function resolve(mode){
- if(busy||!conflict)return;
+ const saved=comparison||conflict;
+ if(busy||!saved)return;
  busy=true;
- const k=key(),saved=conflict,local=await load(k);
+ const k=key();
  try{
-  const next=mode==='remote'?validate(saved.json.data):mode==='merge'?merge(local.data,saved.json.data):local.data;
-  const tag=mode==='remote'?saved.tag:(await api('inventory','PUT',next,{'If-Match':saved.tag,'X-Operation-Id':id()})).tag;
-  state=await transact(k,v=>{
-   if(v.revision!==local.revision)throw Error('本机库存同时变更，请重新处理');
-   return {...v,data:next,recovery:mode==='local'?v.recovery:v.data,revision:v.revision+1,synced:v.revision+1,tag,pending:null};
-  });
-  conflict=null;panel.close();syncStatus('版本冲突已处理');render();
+  const local=await load(k),remote=await api('inventory');
+  if(!remote.tag)throw Error('云端未返回库存版本');
+  if(saved.tag!==remote.tag){comparison=remote;showConflict();throw Error('云端版本已变化，请重新确认同步方式');}
+  const cloud=remote.json.data;
+  if(mode==='remote'){
+   if(!cloud)throw Error('云端尚无可恢复库存');
+   await acknowledge(k,local,remote,validate(cloud),true);
+  }else{
+   const merged=mode==='merge'&&cloud?mergeInventory(local.base,local.data,validate(cloud)):local.data;
+   const replace=!sameInventory(merged,local.data);
+   if(sameInventory(merged,cloud))await acknowledge(k,local,remote,merged,replace);
+   else await push(k,local,remote,merged,replace);
+  }
+  panel.close();syncedMessage();
  }catch(e){
-  if(e.status===409){conflict=null;panel.close();queue();render();}
+  if(e.status===409){comparison=await api('inventory');showConflict();}
   throw e;
  }finally{busy=false;}
 }
@@ -336,7 +388,7 @@ const acts={
   restorePlacementForm();
   try{await submit(pending,true);}catch(e){showError(e);}
  },
- close:()=>panel.close(),new:()=>edit(),detail:k=>detail(spool(state.data,k)),edit:k=>edit(spool(state.data,k)),duplicate:k=>edit(spool(state.data,k),true),amount:k=>amount(spool(state.data,k)),move:k=>moveForm(spool(state.data,k)),
+ close:()=>{comparison=null;panel.close();},new:()=>edit(),detail:k=>detail(spool(state.data,k)),edit:k=>edit(spool(state.data,k)),duplicate:k=>edit(spool(state.data,k),true),amount:k=>amount(spool(state.data,k)),move:k=>moveForm(spool(state.data,k)),
  preset:k=>{$('[name=slider]').value=$('[name=grams]').value=k;$('[name=gross]').value='';},
  load:k=>{
   const list=activeRolls().filter(s=>s.location!==k);
@@ -379,12 +431,12 @@ const acts={
  restore:()=>{backupData=null;sheet('恢复库存','<label>选择备份文件<input type="file" id="restore-file" accept=".json,application/json"></label><p role="alert" class="alert" id="form-error"></p><div id="import-actions"></div>');},
  'merge-backup':()=>save(d=>Object.assign(d,merge(d,backupData)),'已合并备份'),
  'replace-backup':()=>confirm('替换设备库存','替换前会在本机保留快照。','backup'),
- 'confirm-backup':async()=>{state=await transact(key(),v=>({...v,recovery:v.data,data:backupData,revision:v.revision+1}));panel.close();render();queue();toast('已恢复备份');},
+ 'confirm-backup':async()=>{state=await transact(key(),v=>({...v,recovery:v.data,data:backupData,revision:v.revision+1,editedAt:Date.now()}));panel.close();render();queue();toast('已恢复备份');},
  login:()=>form('登录云同步','login',field('用户名','username',account?.name,'text','autocomplete="username" required')+field('密码','password','','password','autocomplete="current-password" required')+'<p class="wide muted">账号库存与本地库存分别保存。你可以在登录后导入本地库存。</p>','','登录'),
  logout:async()=>{if(busy)throw Error('请等待同步完成');await api('logout','POST');await attach(null);syncStatus('已退出云同步。');},
  sync:()=>sync(true),conflict:showConflict,resolve,
- adopt:()=>confirm('导入本地库存','将未登录时保存的库存并入当前账号。','adopt'),
- 'confirm-adopt':async()=>{const previous=await load('local');if(!previous.data.spools.length)throw Error('此设备无可导入的本地卷盘');await save(d=>Object.assign(d,merge(d,previous.data)),'已导入本地库存');},
+ adopt:()=>confirm('导入本地库存','将此设备未登录时保存的库存并入当前账号，并自动同步到云端。','adopt'),
+ 'confirm-adopt':async()=>{const previous=await load('local');if(!previous.data.spools.length)throw Error('此设备无可导入的本地卷盘');await save(d=>{Object.assign(d,merge(d,previous.data));d.settings.guestImported=true;},'已导入本地库存，等待自动同步');},
  persist:async()=>toast(await navigator.storage?.persist?.()?'已获得浏览器持久存储权限':'浏览器未授予持久存储权限'),
  install:async()=>{
   if(matchMedia('(display-mode:standalone)').matches||navigator.standalone)return toast('当前已在独立窗口运行');
@@ -430,7 +482,10 @@ async function submit(form,allowExternal=false){
   busy=true;
   try{const r=await api('login','POST',{username:v('username'),password:String(f.get('password')||'')});await attach(r.json);panel.close();}
   finally{busy=false;}
-  await sync();return;
+  await sync();
+  const guest=await load('local');
+  if(account&&guest.data.spools.length&&!state.data.settings.guestImported)acts.adopt();
+  return;
  }
  await save(d=>{
   if(kind==='spool'){
