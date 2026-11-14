@@ -62,7 +62,7 @@ async function api(req,env,path){
   const wait=await throttle(bucket,'login-global',60,60000)||await throttle(bucket,'login-'+(await hmac(env.SESSION_SECRET,req.headers.get('CF-Connecting-IP')||'unknown')).slice(0,2),8,600000);
   if(wait)return limited(wait);
   let input;
-  try{input=await readJson(req,2048);if(typeof input.username!=='string'||typeof input.password!=='string'||!input.password||input.password.length>256)throw Error();}catch{return error('登录数据无效',400);}
+  try{input=await readJson(req,2048);if(typeof input.username!=='string'||typeof input.password!=='string'||!input.password)throw Error();}catch{return error('登录数据无效',400);}
   const user=accounts.find(x=>x.name===input.username);
   const [,,salt,digest]=(user||accounts[0]).password.split('$');
   const key=await crypto.subtle.importKey('raw',encoder.encode(input.password),'PBKDF2',false,['deriveBits']);
